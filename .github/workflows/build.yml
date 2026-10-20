@@ -18,7 +18,15 @@ jobs:
 
       - name: Install citro3d and 3DS libraries
         run: |
-          dkp-pacman -Sy --noconfirm 3ds-dev
+          if [ -f "$DEVKITPRO/libctru/lib/libcitro3d.a" ]; then
+            echo "citro3d already installed"
+          else
+            for i in 1 2 3 4 5; do
+              dkp-pacman -Sy --noconfirm 3ds-dev && break
+              echo "Attempt $i failed, retrying..."
+              sleep 15
+            done
+          fi
 
       - name: Build
         run: make
