@@ -1,113 +1,91 @@
 
 #include <3ds.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdint.h>
+#include "sunset_bg.h"
 
-#define ITEM_COUNT 5
+static void draw_sunset(uint8_t *fb, int w, int h) {
+    if (!fb) return;
 
-static const char *items[ITEM_COUNT] = {
-    "Career",
-    "Garage",
-    "Car Shop",
-    "Tracks",
-    "Settings"
-};
+    int draw_w = w < SUNSET_BG_W ? w : SUNSET_BG_W;
+    int draw_h = h < SUNSET_BG_H ? h : SUNSET_BG_H;
 
-static void draw_top(PrintConsole *top) {
-    consoleSelect(top);
-    consoleClear();
-    printf("\x1b[8;12H\x1b[36mCOASTAL RACER 3DS\x1b[0m");
-    printf("\x1b[11;14HPress START to exit");
-}
+    for (int y = 0; y < draw_h; y++) {
+        for (int x = 0; x < draw_w; x++) {
+            uint16_t c = sunset_bg[y * SUNSET_BG_W + x];
 
-static void draw_menu(PrintConsole *bottom, int sel,
-                      const char *msg) {
-    consoleSelect(bottom);
-    consoleClear();
+            unsigned r = (c >> 11) & 31;
+            unsigned g = (c >> 5) & 63;
+            unsigned b = c & 31;
 
-    printf("\x1b[2;10H\x1b[33m== MAIN MENU ==\x1b[0m");
+            r = (r * 255) / 31;
+            g = (g * 255) / 63;
+            b = (b * 255) / 31;
 
-    for (int i = 0; i < ITEM_COUNT; i++) {
-        printf("\x1b[%d;8H%s %s",
-               6 + i * 2,
-               i == sel ? ">" : " ",
-               items[i]);
+            /* 3DS framebuffer uses BGR byte order */
+            unsigned char *p = fb + (y * w + x) * 3;
+            p[0] = (uint8_t)b;
+            p[1] = (uint8_t)g;
+            p[2] = (uint8_t)r;
+        }
     }
-
-    if (msg && msg[0])
-        printf("\x1b[22;2H%s", msg);
 }
 
-static void draw_garage(PrintConsole *bottom) {
-    consoleSelect(bottom);
-    consoleClear();
-
-    printf("\x1b[2;12H\x1b[33m== GARAGE ==\x1b[0m");
-    printf("\x1b[5;5HYour racing car");
-    printf("\x1b[8;4HCoastal Racer");
-    printf("\x1b[10;4H3D model: next step!");
-    printf("\x1b[13;4HCar preview is coming");
-    printf("\x1b[17;4HA - Select car");
-    printf("\x1b[19;4HB - Back to menu");
-}
-
-int main(int argc, char **argv) {
+int main(void) {
     gfxInitDefault();
 
-    PrintConsole top, bottom;
-    consoleInit(GFX_TOP, &top);
+    PrintConsole bottom;
     consoleInit(GFX_BOTTOM, &bottom);
 
-    int sel = 0;
-    int inGarage = 0;
-    char msg[48] = "";
+    const char *items[] = {
+        "HOME", "GARAGE", "CAR SHOP", "RACE", "SETTINGS"
+    };
 
-    draw_top(&top);
-    draw_menu(&bottom, sel, msg);
+    int selected = 0;
 
     while (aptMainLoop()) {
         hidScanInput();
         u32 down = hidKeysDown();
 
-        if (down & KEY_START)
-            break;
+        if (down & KEY_START) break;
 
-        if (inGarage) {
-            if (down & KEY_B) {
-                inGarage = 0;
-                msg[0] = '\0';
-                draw_menu(&bottom, sel, msg);
-            } else if (down & KEY_A) {
-                consoleSelect(&bottom);
-                printf("\x1b[21;2HCar selection coming soon!");
-            }
+        if (down & KEY_DOWN)
+            selected = (selected + 1) % 5;
+
+        if (down & KEY_UP)
+            selected = (selected + 4) % 5;
+
+        if (down & KEY_A) {
+            consoleSelect(&bottom);
+            consoleClear();
+            printf("\x1b[3;7H%s", items[selected]);
+            printf("\x1b[5;3HComing soon!");
+            printf("\x1b[21;3HB: BACK");
+            printf("\x1b[22;3HSTART: EXIT");
         } else {
-            int changed = 0;
+            consoleSelect(&bottom);
+            consoleClear();
+            printf("\x1b[1;5HCOASTAL RACER 3DS");
+            printf("\x1b[3;8HSUNSET EDITION");
 
-            if (down & KEY_DOWN) {
-                sel = (sel + 1) % ITEM_COUNT;
-                changed = 1;
+            for (int i = 0; i < 5; i++) {
+                printf("\x1b[%d;7H%s %s",
+                       7 + i * 2,
+                       i == selected ? ">" : " ",
+                       items[i]);
             }
 
-            if (down & KEY_UP) {
-                sel = (sel + ITEM_COUNT - 1) % ITEM_COUNT;
-                changed = 1;
-            }
-
-            if (down & KEY_A) {
-                if (sel == 1) {
-                    inGarage = 1;
-                    draw_garage(&bottom);
-                } else {
-                    snprintf(msg, sizeof(msg),
-                             "%s: coming soon", items[sel]);
-                    changed = 1;
-                }
-            }
-
-            if (changed)
-                draw_menu(&bottom, sel, msg);
+            printf("\x1b[19;3HUP/DOWN: SELECT");
+            printf("\x1b[21;3HA: CONFIRM");
+            printf("\x1b[22;3HSTART: EXIT");
         }
+
+        uint16_t w, h;
+        uint8_t *fb = gfxGetFramebuffer(
+            GFX_TOP, GFX_LEFT, &w, &h
+        );
+
+        draw_sunset(fb, w, h);
 
         gfxFlushBuffers();
         gfxSwapBuffers();
