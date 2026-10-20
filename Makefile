@@ -8,6 +8,7 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
 # Coastal Racer 3DS
+
 TARGET          := coastal_racer
 BUILD           := build
 SOURCES         := . shaders
@@ -27,9 +28,6 @@ LDFLAGS  = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS     := -lcitro3d -lctru -lm
 LIBDIRS  := $(CTRULIB)
-
-# Shader source is not compiled automatically by this file yet.
-# A verified shader compiler rule and matching C loading code are still needed.
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -52,9 +50,9 @@ export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES := $(OFILES_SOURCES)
 export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
-export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                  -I$(CURDIR)/$(BUILD)
+export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) 
+$(foreach dir,$(LIBDIRS),-I$(dir)/include) 
+-I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 ifneq (,$(wildcard $(CURDIR)/icon.png))
@@ -70,12 +68,12 @@ export _3DSXFLAGS += --smdh=$(CURDIR)/$(TARGET).smdh
 all: $(BUILD)
 
 $(BUILD):
-	@mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+@mkdir -p $@
+@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 clean:
-	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf
+@echo clean ...
+@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf
 
 else
 
@@ -84,11 +82,12 @@ DEPENDS := $(OFILES:.o=.d)
 $(OUTPUT).3dsx: $(OUTPUT).elf $(OUTPUT).smdh
 
 $(OUTPUT).smdh: $(APP_ICON)
-	@smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON) $@
-	@echo built ... $(notdir $@)
+@smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON) $@
+@echo built ... $(notdir $@)
 
 $(OUTPUT).elf: $(OFILES)
 
 -include $(DEPENDS)
 
 endif
+
