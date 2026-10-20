@@ -16,8 +16,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build 3DSX
-        run: make
+      - name: Diagnose build
+  run: |
+    echo "DEVKITPRO=$DEVKITPRO"
+    echo "DEVKITARM=$DEVKITARM"
+    pwd
+    ls -la
+    ls -la source
+    ls -l "$DEVKITARM/3ds_rules"
+    make -pn | head -40
 
       - name: Upload 3DSX
         uses: actions/upload-artifact@v4
