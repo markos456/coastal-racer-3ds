@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "sunset_bg.h"
 
+
 static void draw_sunset(uint8_t *fb, int w, int h) {
     if (!fb) return;
 
@@ -12,6 +13,7 @@ static void draw_sunset(uint8_t *fb, int w, int h) {
 
     for (int y = 0; y < draw_h; y++) {
         for (int x = 0; x < draw_w; x++) {
+            /* Источник: обычная картинка, строка за строкой */
             uint16_t c = sunset_bg[y * SUNSET_BG_W + x];
 
             unsigned r = (c >> 11) & 31;
@@ -22,8 +24,13 @@ static void draw_sunset(uint8_t *fb, int w, int h) {
             g = (g * 255) / 63;
             b = (b * 255) / 31;
 
-            /* 3DS framebuffer uses BGR byte order */
-            unsigned char *p = fb + (y * w + x) * 3;
+            /*
+             * 3DS framebuffer хранит пиксели в порядке,
+             * где соседние пиксели по X разделены высотой.
+             */
+            unsigned char *p =
+                fb + 3 * (x * h + (h - 1 - y));
+
             p[0] = (uint8_t)b;
             p[1] = (uint8_t)g;
             p[2] = (uint8_t)r;
