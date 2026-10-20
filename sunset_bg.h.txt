@@ -1,5 +1,5 @@
-#ifndef SUNSET_BG_H
-#define SUNSET_BG_H
+#ifndef SUNSET_BG_HEADER_H
+#define SUNSET_BG_HEADER_H
 #include <stdint.h>
 #define SUNSET_BG_W 400
 #define SUNSET_BG_H 240
