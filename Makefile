@@ -7,9 +7,7 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-#---------------------------------------------------------------------------------
 # Coastal Racer 3DS
-#---------------------------------------------------------------------------------
 TARGET          := coastal_racer
 BUILD           := build
 SOURCES         := .
@@ -25,14 +23,15 @@ CFLAGS   := -g -Wall -O2 -mword-relocations -ffunction-sections $(ARCH)
 CFLAGS   += $(INCLUDE) -D__3DS__ -std=gnu11
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 ASFLAGS  := -g $(ARCH)
-LDFLAGS   = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+LDFLAGS  = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS     := -lcitro3d -lctru -lm
 LIBDIRS  := $(CTRULIB)
 
-#---------------------------------------------------------------------------------
+# Shader source is not compiled automatically by this file yet.
+# A verified shader compiler rule and matching C loading code are still needed.
+
 ifneq ($(BUILD),$(notdir $(CURDIR)))
-#---------------------------------------------------------------------------------
 
 export OUTPUT := $(CURDIR)/$(TARGET)
 export TOPDIR := $(CURDIR)
@@ -53,12 +52,11 @@ export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES := $(OFILES_SOURCES)
 export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
-export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                   -I$(CURDIR)/$(BUILD)
+export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                  -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-# Icon: put icon.png (48x48) next to this Makefile to use your own
 ifneq (,$(wildcard $(CURDIR)/icon.png))
 export APP_ICON := $(CURDIR)/icon.png
 else
@@ -79,9 +77,7 @@ clean:
 	@echo clean ...
 	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf
 
-#---------------------------------------------------------------------------------
 else
-#---------------------------------------------------------------------------------
 
 DEPENDS := $(OFILES:.o=.d)
 
@@ -95,6 +91,4 @@ $(OUTPUT).elf: $(OFILES)
 
 -include $(DEPENDS)
 
-#---------------------------------------------------------------------------------
 endif
-#---------------------------------------------------------------------------------
