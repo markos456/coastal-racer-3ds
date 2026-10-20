@@ -1,0 +1,9 @@
+
+; Coastal Racer 3DS - basic fragment shader
+
+.out outclr color
+
+.proc main
+    mov o0, v0
+    end
+.end
