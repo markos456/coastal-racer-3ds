@@ -1,0 +1,29 @@
+
+name: Build Coastal Racer 3DS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download project
+        uses: actions/checkout@v4
+
+      - name: Install devkitPro tools
+        uses: devkitPro/pacman-container@v1
+        with:
+          packages: >-
+            3ds-dev
+            3ds-libctru
+            3ds-citro3d
+
+      - name: Check toolchain
+        run: |
+          echo "Checking 3DS toolchain"
+          arm-none-eabi-gcc --version
+          test -n "$DEVKITPRO"
