@@ -1,38 +1,42 @@
 name: Coastal Racer 3DS
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-  workflow_dispatch:
+push:
+branches:
+- main
+- master
+pull_request:
+workflow_dispatch:
 
 jobs:
-  build:
-    name: Build Coastal Racer 3DS
-    runs-on: ubuntu-latest
-    container:
-      image: devkitpro/devkitarm:latest
+build:
+name: Build Coastal Racer 3DS
+runs-on: ubuntu-latest
+container:
+image: devkitpro/devkitarm:latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Install Citro3D
-        run: |
-          pacman -Sy --noconfirm
-          pacman -S --noconfirm 3ds-citro3d
+steps:
+  - name: Checkout
+    uses: actions/checkout@v4
 
-      - name: Build
-        run: make
+  - name: Check development tools
+    run: |
+      echo "DEVKITPRO=$DEVKITPRO"
+      echo "DEVKITARM=$DEVKITARM"
+      test -f "$DEVKITPRO/libctru/include/3ds.h"
 
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Coastal-Racer-3DS
-          path: |
-            *.3dsx
-            *.smdh
-            *.elf
-          if-no-files-found: error
+  - name: Build
+    run: make
+
+  - name: Upload build
+    uses: actions/upload-artifact@v4
+    with:
+      name: Coastal-Racer-3DS
+      path: |
+        *.3dsx
+        *.smdh
+        *.elf
+      if-no-files-found: error
+```
+
