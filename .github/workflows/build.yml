@@ -17,14 +17,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build 3DSX
-        run: make
-
-      - name: Upload 3DSX
-        uses: actions/upload-artifact@v4
-        with:
-          name: coastal-racer-3ds
-          path: |
-            coastal-racer.3dsx
-            coastal-racer.smdh
-          if-no-files-found: error
+      - name: Diagnose build
+        run: |
+          echo "=== ROOT FILES ==="
+          ls -la
+          echo "=== SOURCE FILES ==="
+          find source -maxdepth 2 -type f -print
+          echo "=== MAKEFILE ==="
+          cat -A Makefile
+          echo "=== TOOLCHAIN ==="
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITARM=$DEVKITARM"
+          echo "=== RULES FILE ==="
+          ls -l "$DEVKITPRO/devkitARM/3ds_rules"
+          echo "=== MAKE DATABASE TARGETS ==="
+          make -pn 2>&1 | grep -E '^(all|default|\.DEFAULT_GOAL|TARGET|SOURCES|BUILD)[ :?=]' | head -60 || true
+          echo "=== MAKE DEBUG ==="
+          make --debug=v
