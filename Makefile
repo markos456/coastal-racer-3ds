@@ -10,7 +10,7 @@ include $(DEVKITARM)/3ds_rules
 # Coastal Racer 3DS
 TARGET          := coastal_racer
 BUILD           := build
-SOURCES         := .
+SOURCES         := . shaders
 INCLUDES        :=
 
 APP_TITLE       := Coastal Racer 3DS
