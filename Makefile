@@ -1,8 +1,4 @@
 
-.SUFFIXES:
-
-include $(DEVKITARM)/3ds_rules
-
 TARGET := coastal-racer
 BUILD := build
 SOURCES := source
@@ -20,3 +16,5 @@ LDFLAGS = -specs=3dsx.specs -g $(ARCH)
 
 LIBS := -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
+
+include $(DEVKITARM)/3ds_rules
