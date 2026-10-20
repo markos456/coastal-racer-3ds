@@ -2,7 +2,7 @@
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITARM)),)
-$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
+$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM)
 endif
 
 TOPDIR ?= $(CURDIR)
@@ -10,7 +10,7 @@ include $(DEVKITARM)/3ds_rules
 
 TARGET := coastal_racer
 BUILD := build
-SOURCES := .
+SOURCES := . shaders
 INCLUDES :=
 
 APP_TITLE := Coastal Racer 3DS
@@ -38,6 +38,7 @@ export DEPSDIR := $(CURDIR)/$(BUILD)
 CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 
 ifeq ($(strip $(CPPFILES)),)
 export LD := $(CC)
@@ -46,8 +47,9 @@ export LD := $(CXX)
 endif
 
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
-export OFILES := $(OFILES_SOURCES)
-export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
+export OFILES_BIN := $(PICAFILES:.v.pica=.shbin.o)
+export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+export HFILES := $(PICAFILES:.v.pica=_shbin.h)
 
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -85,6 +87,14 @@ $(OUTPUT).smdh: $(APP_ICON)
 	@echo built ... $(notdir $@)
 
 $(OUTPUT).elf: $(OFILES)
+
+$(OFILES_SOURCES): $(HFILES)
+
+.PRECIOUS: %.shbin
+
+%.shbin.o %_shbin.h: %.shbin
+	@echo $(notdir $<)
+	@$(bin2o)
 
 -include $(DEPENDS)
 
