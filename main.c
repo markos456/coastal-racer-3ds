@@ -1,104 +1,160 @@
 
 #include <3ds.h>
+#include <citro3d.h>
 #include <stdio.h>
-#include <stdint.h>
-#include "sunset_bg.h"
 
+#include "vshader_shbin.h"
 
-static void draw_sunset(uint8_t *fb, int w, int h) {
-    if (!fb) return;
+#define CLEAR_COLOR 0xF08A42FF
 
-    int draw_w = w < SUNSET_BG_W ? w : SUNSET_BG_W;
-    int draw_h = h < SUNSET_BG_H ? h : SUNSET_BG_H;
+#define DISPLAY_TRANSFER_FLAGS \
+    (GX_TRANSFER_FLIP_VERT(0) | \
+     GX_TRANSFER_OUT_TILED(0) | \
+     GX_TRANSFER_RAW_COPY(0) | \
+     GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | \
+     GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
+     GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
-    for (int y = 0; y < draw_h; y++) {
-        for (int x = 0; x < draw_w; x++) {
-            /* Источник: обычная картинка, строка за строкой */
-            uint16_t c = sunset_bg[y * SUNSET_BG_W + x];
+static DVLB_s *dvlb;
+static shaderProgram_s program;
+static C3D_Mtx projection;
+static C3D_Mtx modelView;
 
-            unsigned r = (c >> 11) & 31;
-            unsigned g = (c >> 5) & 63;
-            unsigned b = c & 31;
+static int uProjection;
+static int uModelView;
 
-            r = (r * 255) / 31;
-            g = (g * 255) / 63;
-            b = (b * 255) / 31;
+static void initScene(void)
+{
+    dvlb = DVLB_ParseFile(
+        (u32 *)vshader_shbin,
+        vshader_shbin_size
+    );
 
-            /*
-             * 3DS framebuffer хранит пиксели в порядке,
-             * где соседние пиксели по X разделены высотой.
-             */
-            unsigned char *p =
-                fb + 3 * (x * h + (h - 1 - y));
+    shaderProgramInit(&program);
+    shaderProgramSetVsh(&program, &dvlb->DVLE[0]);
+    C3D_BindProgram(&program);
 
-            p[0] = (uint8_t)b;
-            p[1] = (uint8_t)g;
-            p[2] = (uint8_t)r;
-        }
-    }
+    uProjection = shaderInstanceGetUniformLocation(
+        program.vertexShader, "projection"
+    );
+
+    uModelView = shaderInstanceGetUniformLocation(
+        program.vertexShader, "modelView"
+    );
+
+    C3D_AttrInfo *attr = C3D_GetAttrInfo();
+    AttrInfo_Init(attr);
+    AttrInfo_AddLoader(attr, 0, GPU_FLOAT, 3);
+    AttrInfo_AddLoader(attr, 1, GPU_FLOAT, 4);
+
+    C3D_TexEnv *env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+
+    Mtx_PerspTilt(
+        &projection,
+        C3D_AngleFromDegrees(50.0f),
+        C3D_AspectRatioTop,
+        0.1f,
+        100.0f,
+        false
+    );
+
+    Mtx_Identity(&modelView);
 }
 
-int main(void) {
+static void drawTriangle(void)
+{
+    C3D_FVUnifMtx4x4(
+        GPU_VERTEX_SHADER, uProjection, &projection
+    );
+
+    C3D_FVUnifMtx4x4(
+        GPU_VERTEX_SHADER, uModelView, &modelView
+    );
+
+    C3D_ImmDrawBegin(GPU_TRIANGLES);
+
+    /* Red vertex */
+    C3D_ImmSendAttrib(-1.0f, -0.8f, -3.0f, 1.0f);
+    C3D_ImmSendAttrib(1.0f, 0.1f, 0.1f, 1.0f);
+
+    /* Green vertex */
+    C3D_ImmSendAttrib(1.0f, -0.8f, -3.0f, 1.0f);
+    C3D_ImmSendAttrib(0.1f, 1.0f, 0.2f, 1.0f);
+
+    /* Blue vertex */
+    C3D_ImmSendAttrib(0.0f, 0.9f, -3.0f, 1.0f);
+    C3D_ImmSendAttrib(0.1f, 0.3f, 1.0f, 1.0f);
+
+    C3D_ImmDrawEnd();
+}
+
+int main(void)
+{
     gfxInitDefault();
+    consoleInit(GFX_BOTTOM, NULL);
 
-    PrintConsole bottom;
-    consoleInit(GFX_BOTTOM, &bottom);
+    if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
+        gfxExit();
+        return 1;
+    }
 
-    const char *items[] = {
-        "HOME", "GARAGE", "CAR SHOP", "RACE", "SETTINGS"
-    };
+    C3D_RenderTarget *target = C3D_RenderTargetCreate(
+        240, 400,
+        GPU_RB_RGBA8,
+        GPU_RB_DEPTH24_STENCIL8
+    );
 
-    int selected = 0;
+    if (!target) {
+        C3D_Fini();
+        gfxExit();
+        return 1;
+    }
+
+    C3D_RenderTargetSetOutput(
+        target,
+        GFX_TOP,
+        GFX_LEFT,
+        DISPLAY_TRANSFER_FLAGS
+    );
+
+    initScene();
 
     while (aptMainLoop()) {
         hidScanInput();
-        u32 down = hidKeysDown();
 
-        if (down & KEY_START) break;
+        if (hidKeysDown() & KEY_START)
+            break;
 
-        if (down & KEY_DOWN)
-            selected = (selected + 1) % 5;
+        consoleSelect(NULL);
+        consoleClear();
+        printf("\x1b[2;4HCOASTAL RACER 3DS");
+        printf("\x1b[5;7H3D TEST");
+        printf("\x1b[8;3HNext stop: SUPRA A70");
+        printf("\x1b[12;3HSTART: EXIT");
 
-        if (down & KEY_UP)
-            selected = (selected + 4) % 5;
+        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
-        if (down & KEY_A) {
-            consoleSelect(&bottom);
-            consoleClear();
-            printf("\x1b[3;7H%s", items[selected]);
-            printf("\x1b[5;3HComing soon!");
-            printf("\x1b[21;3HB: BACK");
-            printf("\x1b[22;3HSTART: EXIT");
-        } else {
-            consoleSelect(&bottom);
-            consoleClear();
-            printf("\x1b[1;5HCOASTAL RACER 3DS");
-            printf("\x1b[3;8HSUNSET EDITION");
-
-            for (int i = 0; i < 5; i++) {
-                printf("\x1b[%d;7H%s %s",
-                       7 + i * 2,
-                       i == selected ? ">" : " ",
-                       items[i]);
-            }
-
-            printf("\x1b[19;3HUP/DOWN: SELECT");
-            printf("\x1b[21;3HA: CONFIRM");
-            printf("\x1b[22;3HSTART: EXIT");
-        }
-
-        uint16_t w, h;
-        uint8_t *fb = gfxGetFramebuffer(
-            GFX_TOP, GFX_LEFT, &w, &h
+        C3D_RenderTargetClear(
+            target,
+            C3D_CLEAR_ALL,
+            CLEAR_COLOR,
+            0
         );
 
-        draw_sunset(fb, w, h);
+        C3D_FrameDrawOn(target);
+        drawTriangle();
 
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        gspWaitForVBlank();
+        C3D_FrameEnd(0);
     }
 
+    shaderProgramFree(&program);
+    DVLB_Free(dvlb);
+    C3D_RenderTargetDelete(target);
+    C3D_Fini();
     gfxExit();
+
     return 0;
 }
