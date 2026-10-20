@@ -1,11 +1,13 @@
 
+.SUFFIXES:
+
+include $(DEVKITARM)/3ds_rules
+
 TARGET := coastal-racer
 BUILD := build
 SOURCES := source
 DATA :=
 INCLUDES :=
-GRAPHICS := gfx
-GFXBUILD := $(BUILD)
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
@@ -18,5 +20,3 @@ LDFLAGS = -specs=3dsx.specs -g $(ARCH)
 
 LIBS := -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
-
-include $(DEVKITARM)/3ds_rules
