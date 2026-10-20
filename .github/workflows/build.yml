@@ -1,30 +1,30 @@
-
-name: Build Coastal Racer 3DS
+name: Coastal Racer 3DS
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Build Coastal Racer 3DS
     runs-on: ubuntu-latest
-    container:
-      image: devkitpro/devkitarm:latest
+    container: devkitpro/devkitarm:latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build 3DSX
+      - name: Build
         run: make
 
-      - name: Upload 3DSX
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: coastal-racer-3ds
+          name: Coastal-Racer-3DS
           path: |
-            coastal-racer.3dsx
-            coastal-racer.smdh
+            *.3dsx
+            *.smdh
+            *.elf
           if-no-files-found: error
