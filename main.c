@@ -3,7 +3,6 @@
 #include <citro3d.h>
 #include <stdio.h>
 #include <math.h>
-#include <string.h>
 
 #include "vshader_shbin.h"
 
@@ -26,30 +25,25 @@ typedef enum {
     SCREEN_EXIT
 } MenuScreen;
 
-static DVLB_s *dvlb;
+static DVLB_s *dvlb = NULL;
 static shaderProgram_s program;
 static C3D_Mtx projection;
 static C3D_Mtx modelView;
-static C3D_RenderTarget *target;
+static C3D_RenderTarget *target = NULL;
 
-static int uProjection;
-static int uModelView;
+static int uProjection = -1;
+static int uModelView = -1;
+static int sceneReady = 0;
 
 static PrintConsole bottomScreen;
 static MenuScreen screen = SCREEN_MAIN;
 static int selected = 0;
-static int exitChoice = 0;
+static int exitChoice = 1;
 static float roadOffset = 0.0f;
-
-static const char *mainItems[MENU_COUNT] = {
-    "PLAY",
-    "SETTINGS",
-    "SAVES",
-    "EXIT"
-};
 
 static const char *statusMessage = "WELCOME TO THE COAST!";
 
+/* Send one vertex: position + color. */
 static void vertex(float x, float y, float z,
                    float r, float g, float b)
 {
@@ -75,155 +69,209 @@ static void quad(
     float dx, float dy, float dz,
     float r, float g, float b)
 {
-    triangle(ax,ay,az, bx,by,bz, cx,cy,cz, r,g,b);
-    triangle(ax,ay,az, cx,cy,cz, dx,dy,dz, r,g,b);
+    triangle(ax, ay, az, bx, by, bz,
+             cx, cy, cz, r, g, b);
+
+    triangle(ax, ay, az, cx, cy, cz,
+             dx, dy, dz, r, g, b);
 }
 
+/* Axis-aligned box. */
 static void box(
     float x1, float y1, float z1,
     float x2, float y2, float z2,
     float r, float g, float b)
 {
-    float a=x1, c=x2;
-    float d=y1, e=y2;
-    float f=z1, h=z2;
+    float a = x1, c = x2;
+    float d = y1, e = y2;
+    float f = z1, h = z2;
 
     quad(a,d,f, c,d,f, c,e,f, a,e,f, r,g,b);
     quad(c,d,h, a,d,h, a,e,h, c,e,h, r,g,b);
 
     quad(a,d,h, a,d,f, a,e,f, a,e,h,
-         r*0.65f,g*0.65f,b*0.65f);
+         r*0.65f, g*0.65f, b*0.65f);
 
     quad(c,d,f, c,d,h, c,e,h, c,e,f,
-         r*0.8f,g*0.8f,b*0.8f);
+         r*0.8f, g*0.8f, b*0.8f);
 
     quad(a,e,f, c,e,f, c,e,h, a,e,h, r,g,b);
 
     quad(a,d,h, c,d,h, c,d,f, a,d,f,
-         r*0.5f,g*0.5f,b*0.5f);
+         r*0.5f, g*0.5f, b*0.5f);
 }
 
-static void drawSkyAndOcean(void)
+/* Sunset, sun and ocean. */
+static void drawEnvironment(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    quad(-12,3.5f,-12, 12,3.5f,-12,
-          12,0.15f,-12, -12,0.15f,-12,
-          0.95f,0.30f,0.16f);
+    /* Sky: layered colors above the horizon. */
+    quad(-80, 15, -40, 80, 15, -40,
+         80, 4, -40, -80, 4, -40,
+         0.20f, 0.12f, 0.38f);
 
-    quad(-12,0.55f,-11, 12,0.55f,-11,
-          12,0.05f,-11, -12,0.05f,-11,
-          1.0f,0.48f,0.35f);
+    quad(-80, 4, -40, 80, 4, -40,
+         80, 2, -40, -80, 2, -40,
+         0.48f, 0.18f, 0.42f);
 
-    quad(-15,0.1f,-10, 15,0.1f,-10,
-          15,-3,-10, -15,-3,-10,
-          0.06f,0.30f,0.48f);
+    quad(-80, 2, -40, 80, 2, -40,
+         80, 0, -40, -80, 0, -40,
+         0.95f, 0.30f, 0.22f);
 
-    for (int i=0; i<24; i++) {
-        float a1 = i * 2.0f * PI / 24.0f;
-        float a2 = (i+1) * 2.0f * PI / 24.0f;
+    quad(-80, 0, -40, 80, 0, -40,
+         80, -1.2f, -40, -80, -1.2f, -40,
+         1.0f, 0.56f, 0.30f);
+
+    /* Sun, centered in the sunset. */
+    for (int i = 0; i < 32; i++) {
+        float a1 = (float)i * 2.0f * PI / 32.0f;
+        float a2 = (float)(i + 1) * 2.0f * PI / 32.0f;
 
         triangle(
-            0,0.48f,-9.8f,
-            cosf(a1)*0.34f,
-            0.48f+sinf(a1)*0.34f,-9.8f,
-            cosf(a2)*0.34f,
-            0.48f+sinf(a2)*0.34f,-9.8f,
-            1.0f,0.68f,0.25f);
+            -4.0f, 1.1f, -30.0f,
+            -4.0f + cosf(a1) * 2.0f,
+             1.1f + sinf(a1) * 2.0f, -30.0f,
+            -4.0f + cosf(a2) * 2.0f,
+             1.1f + sinf(a2) * 2.0f, -30.0f,
+            1.0f, 0.72f, 0.32f);
+    }
+
+    /* Wide ocean plane below the horizon. */
+    quad(-100, -1.20f, -40,
+          100, -1.20f, -40,
+          100, -1.20f, -2.0f,
+         -100, -1.20f, -2.0f,
+          0.035f, 0.23f, 0.40f);
+
+    /* A few simple ocean highlights. */
+    for (int i = 0; i < 12; i++) {
+        float z = -25.0f + (float)i * 1.8f;
+
+        quad(-9.0f, -1.17f, z,
+             -7.5f, -1.17f, z,
+             -7.5f, -1.17f, z - 0.06f,
+             -9.0f, -1.17f, z - 0.06f,
+             0.12f, 0.38f, 0.52f);
+
+        quad(7.5f, -1.17f, z - 0.5f,
+             9.0f, -1.17f, z - 0.5f,
+             9.0f, -1.17f, z - 0.56f,
+             7.5f, -1.17f, z - 0.56f,
+             0.12f, 0.38f, 0.52f);
     }
 
     C3D_ImmDrawEnd();
 }
 
+/* Wide road, with perspective toward the horizon. */
 static void drawRoad(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    quad(-5,-2.5f,-10, 5,-2.5f,-10,
-          1.55f,-0.28f,-2, -1.55f,-0.28f,-2,
-          0.16f,0.17f,0.20f);
+    /* Asphalt. The near end appears wider because of perspective. */
+    quad(-4.8f, -1.10f, -2.2f,
+          4.8f, -1.10f, -2.2f,
+          4.8f, -1.10f, -38.0f,
+         -4.8f, -1.10f, -38.0f,
+          0.14f, 0.15f, 0.17f);
 
-    quad(-5,-2.5f,-10, -4.65f,-2.5f,-10,
-         -1.42f,-0.28f,-2, -1.55f,-0.28f,-2,
-          0.90f,0.85f,0.70f);
+    /* Left and right road edges. */
+    quad(-4.8f, -1.085f, -2.2f,
+         -4.45f, -1.085f, -2.2f,
+         -4.45f, -1.085f, -38.0f,
+         -4.8f, -1.085f, -38.0f,
+          0.95f, 0.79f, 0.53f);
 
-    quad(4.65f,-2.5f,-10, 5,-2.5f,-10,
-          1.55f,-0.28f,-2, 1.42f,-0.28f,-2,
-          0.90f,0.85f,0.70f);
+    quad(4.45f, -1.085f, -2.2f,
+         4.8f, -1.085f, -2.2f,
+         4.8f, -1.085f, -38.0f,
+         4.45f, -1.085f, -38.0f,
+          0.95f, 0.79f, 0.53f);
 
-    for (int i=0; i<9; i++) {
-        float t = (float)i/9.0f;
-        float z1 = -9.5f+t*7.0f+roadOffset;
-        float z2 = z1+0.32f+t*0.18f;
+    /* Moving dashed center line. */
+    for (int i = 0; i < 13; i++) {
+        float z1 = -37.0f + (float)i * 3.0f + roadOffset;
 
-        if (z1 > -2.1f) {
-            z1 -= 7.0f;
-            z2 -= 7.0f;
-        }
+        while (z1 > -2.4f)
+            z1 -= 36.0f;
 
-        if (z2 < -10 || z1 > -2)
-            continue;
+        float z2 = z1 + 1.35f;
 
-        if (z1 < -10) z1 = -10;
-        if (z2 > -2) z2 = -2;
+        if (z2 > -2.2f)
+            z2 = -2.2f;
 
-        float w1 = 0.035f*(-z1)/3.0f;
-        float w2 = 0.035f*(-z2)/3.0f;
-        float y1 = -2.8f/(-z1);
-        float y2 = -2.8f/(-z2);
-
-        quad(-w1,y1,z1, w1,y1,z1,
-              w2,y2,z2, -w2,y2,z2,
-              1.0f,0.88f,0.55f);
+        quad(-0.12f, -1.075f, z1,
+              0.12f, -1.075f, z1,
+              0.12f, -1.075f, z2,
+             -0.12f, -1.075f, z2,
+              1.0f, 0.86f, 0.58f);
     }
 
     C3D_ImmDrawEnd();
 }
 
+/* Simple red sports car, facing forward along the road. */
 static void drawCar(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    box(-0.65f,-0.22f,-3.8f, 0.65f,0.08f,-2.2f,
-         0.85f,0.025f,0.035f);
+    /* Main body. */
+    box(-0.65f, -1.02f, -3.8f,
+         0.65f, -0.72f, -2.2f,
+         0.85f, 0.025f, 0.035f);
 
-    box(-0.43f,0.08f,-3.45f, 0.43f,0.38f,-2.65f,
-         0.12f,0.22f,0.30f);
+    /* Cabin and windshield. */
+    box(-0.43f, -0.72f, -3.45f,
+         0.43f, -0.42f, -2.65f,
+         0.12f, 0.22f, 0.30f);
 
-    box(-0.34f,0.38f,-3.30f, 0.34f,0.43f,-2.80f,
-         0.80f,0.025f,0.035f);
+    /* Roof. */
+    box(-0.34f, -0.42f, -3.30f,
+         0.34f, -0.37f, -2.80f,
+         0.80f, 0.025f, 0.035f);
 
-    box(-0.78f,-0.30f,-3.65f, -0.58f,0,-3.30f,
-         0.035f,0.035f,0.045f);
+    /* Four wheels. */
+    box(-0.78f, -1.10f, -3.65f,
+     -0.58f, -0.80f, -3.30f,
+      0.035f, 0.035f, 0.045f);
 
-    box(0.58f,-0.30f,-3.65f, 0.78f,0,-3.30f,
-         0.035f,0.035f,0.045f);
+    box(0.58f, -1.10f, -3.65f,
+      0.78f, -0.80f, -3.30f,
+      0.035f, 0.035f, 0.045f);
 
-    box(-0.78f,-0.30f,-2.65f, -0.58f,0,-2.30f,
-         0.035f,0.035f,0.045f);
+    box(-0.78f, -1.10f, -2.65f,
+     -0.58f, -0.80f, -2.30f,
+      0.035f, 0.035f, 0.045f);
 
-    box(0.58f,-0.30f,-2.65f, 0.78f,0,-2.30f,
-         0.035f,0.035f,0.045f);
+    box(0.58f, -1.10f, -2.65f,
+      0.78f, -0.80f, -2.30f,
+      0.035f, 0.035f, 0.045f);
 
-    box(-0.58f,0.12f,-3.88f, 0.58f,0.19f,-3.78f,
-         0.12f,0.12f,0.13f);
+    /* Rear spoiler. */
+    box(-0.58f, -0.68f, -3.88f,
+         0.58f, -0.61f, -3.78f,
+         0.12f, 0.12f, 0.13f);
 
-    box(-0.50f,-0.10f,-2.23f, -0.22f,-0.02f,-2.19f,
-         1.0f,0.85f,0.45f);
+    /* Front headlights. */
+    box(-0.50f, -0.90f, -2.23f,
+        -0.22f, -0.82f, -2.19f,
+         1.0f, 0.85f, 0.45f);
 
-    box(0.22f,-0.10f,-2.23f, 0.50f,-0.02f,-2.19f,
-         1.0f,0.85f,0.45f);
+    box(0.22f, -0.90f, -2.23f,
+         0.50f, -0.82f, -2.19f,
+         1.0f, 0.85f, 0.45f);
 
     C3D_ImmDrawEnd();
 }
 
-static void initScene(void)
+static int initScene(void)
 {
     dvlb = DVLB_ParseFile((u32 *)vshader_shbin,
                           vshader_shbin_size);
 
     if (!dvlb)
-        return;
+        return 0;
 
     shaderProgramInit(&program);
     shaderProgramSetVsh(&program, &dvlb->DVLE[0]);
@@ -231,8 +279,16 @@ static void initScene(void)
 
     uProjection = shaderInstanceGetUniformLocation(
         program.vertexShader, "projection");
+
     uModelView = shaderInstanceGetUniformLocation(
         program.vertexShader, "modelView");
+
+    if (uProjection < 0 || uModelView < 0) {
+        shaderProgramFree(&program);
+        DVLB_Free(dvlb);
+        dvlb = NULL;
+        return 0;
+    }
 
     C3D_AttrInfo *attr = C3D_GetAttrInfo();
     AttrInfo_Init(attr);
@@ -244,11 +300,16 @@ static void initScene(void)
     C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
 
-    Mtx_PerspTilt(&projection,
+    Mtx_PerspTilt(
+        &projection,
         C3D_AngleFromDegrees(50.0f),
-        C3D_AspectRatioTop, 0.1f, 100.0f, false);
+        C3D_AspectRatioTop,
+        0.1f, 100.0f, false);
 
     Mtx_Identity(&modelView);
+
+    sceneReady = 1;
+    return 1;
 }
 
 static void printItem(int row, const char *label, int active)
@@ -271,17 +332,18 @@ static void drawMenu(void)
 
     switch (screen) {
     case SCREEN_MAIN:
-        printItem(8,  "PLAY",      selected == 0);
-        printItem(11, "SETTINGS",  selected == 1);
-        printItem(14, "SAVES",     selected == 2);
-        printItem(17, "EXIT",      selected == 3);
+        printItem(8,  "PLAY",     selected == 0);
+        printItem(11, "SETTINGS", selected == 1);
+        printItem(14, "SAVES",    selected == 2);
+        printItem(17, "EXIT",     selected == 3);
+
         printf("\x1b[21;2HUP/DOWN: SELECT");
         printf("\x1b[22;2HA: CONFIRM");
         break;
 
     case SCREEN_PLAY:
         printf("\x1b[6;4HSELECT GAME MODE");
-        printItem(10, "OFFLINE", selected == 0);
+        printItem(10, "OFFLINE",     selected == 0);
         printItem(13, "MULTIPLAYER", selected == 1);
         printf("\x1b[20;2HB: BACK");
         break;
@@ -335,11 +397,15 @@ int main(void)
     C3D_RenderTargetSetOutput(
         target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
-    initScene();
+    if (!initScene()) {
+        C3D_RenderTargetDelete(target);
+        C3D_Fini();
+        gfxExit();
+        return 1;
+    }
 
     while (aptMainLoop()) {
         hidScanInput();
-
         u32 down = hidKeysDown();
 
         if (down & KEY_B) {
@@ -404,38 +470,38 @@ int main(void)
         if (down & KEY_START)
             break;
 
-        if (screen == SCREEN_MAIN ||
-            screen == SCREEN_PLAY ||
-            screen == SCREEN_SETTINGS ||
-            screen == SCREEN_SAVES ||
-            screen == SCREEN_EXIT) {
-            drawMenu();
-        }
+        drawMenu();
 
-        roadOffset += 0.045f;
-        if (roadOffset >= 7.0f)
-            roadOffset -= 7.0f;
+        roadOffset += 0.10f;
+        if (roadOffset >= 3.0f)
+            roadOffset -= 3.0f;
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
-        C3D_RenderTargetClear(target, C3D_CLEAR_ALL,
-                              0xF08A42FF, 0);
+        C3D_RenderTargetClear(
+            target, C3D_CLEAR_ALL, 0xF08A42FF, 0);
+
         C3D_FrameDrawOn(target);
 
         C3D_FVUnifMtx4x4(
             GPU_VERTEX_SHADER, uProjection, &projection);
+
         C3D_FVUnifMtx4x4(
             GPU_VERTEX_SHADER, uModelView, &modelView);
 
-        drawSkyAndOcean();
+        drawEnvironment();
         drawRoad();
         drawCar();
 
         C3D_FrameEnd(0);
     }
 
-    shaderProgramFree(&program);
-    DVLB_Free(dvlb);
+    if (sceneReady)
+        shaderProgramFree(&program);
+
+    if (dvlb)
+        DVLB_Free(dvlb);
+
     C3D_RenderTargetDelete(target);
     C3D_Fini();
     gfxExit();
