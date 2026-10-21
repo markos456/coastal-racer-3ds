@@ -22,7 +22,8 @@ typedef enum {
     SCREEN_PLAY,
     SCREEN_SETTINGS,
     SCREEN_SAVES,
-    SCREEN_EXIT
+    SCREEN_EXIT,
+    SCREEN_RACE
 } MenuScreen;
 
 static DVLB_s *dvlb = NULL;
@@ -37,9 +38,14 @@ static int sceneReady = 0;
 
 static PrintConsole bottomScreen;
 static MenuScreen screen = SCREEN_MAIN;
+
 static int selected = 0;
 static int exitChoice = 1;
+
 static float roadOffset = 0.0f;
+static float carX = 0.0f;
+static float festivalZ = -36.0f;
+static float boxShiftX = 0.0f;
 
 static const char *statusMessage = "WELCOME TO THE COAST!";
 
@@ -80,6 +86,9 @@ static void box(
     float x2, float y2, float z2,
     float r, float g, float b)
 {
+    x1 += boxShiftX;
+    x2 += boxShiftX;
+
     float a = x1, c = x2;
     float d = y1, e = y2;
     float f = z1, h = z2;
@@ -124,21 +133,21 @@ static void drawEnvironment(void)
           80, -1.2f, -40, -80, -1.2f, -40,
           1.0f, 0.56f, 0.30f);
 
-    /* Large sun centered at X = 0 */
+    /* Closer sunset sun */
     for (int i = 0; i < 48; i++) {
         float a1 = (float)i * 2.0f * PI / 48.0f;
         float a2 = (float)(i + 1) * 2.0f * PI / 48.0f;
 
         triangle(
-            0.0f, 1.1f, -30.0f,
+            0.0f, 1.1f, -18.0f,
             cosf(a1) * 2.4f,
-            1.1f + sinf(a1) * 2.4f, -30.0f,
+            1.1f + sinf(a1) * 2.4f, -18.0f,
             cosf(a2) * 2.4f,
-            1.1f + sinf(a2) * 2.4f, -30.0f,
+            1.1f + sinf(a2) * 2.4f, -18.0f,
             1.0f, 0.72f, 0.32f);
     }
 
-    /* Ocean on both sides of the highway */
+    /* Ocean */
     quad(-100, -1.20f, -40,
           100, -1.20f, -40,
           100, -1.20f, -2.0f,
@@ -165,33 +174,29 @@ static void drawEnvironment(void)
     C3D_ImmDrawEnd();
 }
 
-/* LONG HIGHWAY LEADING TOWARD THE SUN */
+/* LONG HIGHWAY */
 static void drawRoad(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Asphalt: wide foreground, narrow distant end */
     quad(-4.8f, -1.10f, -2.2f,
           4.8f, -1.10f, -2.2f,
           1.15f, -1.10f, -38.0f,
          -1.15f, -1.10f, -38.0f,
           0.14f, 0.15f, 0.17f);
 
-    /* Left road edge */
     quad(-4.8f, -1.085f, -2.2f,
          -4.45f, -1.085f, -2.2f,
          -1.05f, -1.085f, -38.0f,
          -1.15f, -1.085f, -38.0f,
           0.95f, 0.79f, 0.53f);
 
-    /* Right road edge */
     quad(4.45f, -1.085f, -2.2f,
          4.8f, -1.085f, -2.2f,
          1.15f, -1.085f, -38.0f,
          1.05f, -1.085f, -38.0f,
           0.95f, 0.79f, 0.53f);
 
-    /* Moving center-line dashes */
     for (int i = 0; i < 13; i++) {
         float z1 = -37.0f + (float)i * 3.0f + roadOffset;
 
@@ -206,7 +211,6 @@ static void drawRoad(void)
         if (z2 <= z1)
             continue;
 
-        /* Match the stripe width to the tapered road */
         float t1 = (-z1 - 2.2f) / 35.8f;
         float t2 = (-z2 - 2.2f) / 35.8f;
 
@@ -228,27 +232,69 @@ static void drawRoad(void)
     C3D_ImmDrawEnd();
 }
 
-/* RED SPORTS CAR */
+/* FESTIVAL ENTRANCE */
+static void drawFestivalGate(void)
+{
+    float z = festivalZ;
+
+    C3D_ImmDrawBegin(GPU_TRIANGLES);
+
+    /* Left pillar */
+    quad(-3.7f, -1.05f, z,
+         -3.25f, -1.05f, z,
+         -3.25f, 2.2f, z,
+         -3.7f, 2.2f, z,
+         0.15f, 0.75f, 1.0f);
+
+    /* Right pillar */
+    quad(3.25f, -1.05f, z,
+         3.7f, -1.05f, z,
+         3.7f, 2.2f, z,
+         3.25f, 2.2f, z,
+         1.0f, 0.25f, 0.55f);
+
+    /* Top beam */
+    quad(-3.7f, 1.75f, z,
+          3.7f, 1.75f, z,
+          3.7f, 2.2f, z,
+         -3.7f, 2.2f, z,
+          1.0f, 0.55f, 0.12f);
+
+    /* Festival lights */
+    for (int i = 0; i < 7; i++) {
+        float x = -2.8f + (float)i * 0.93f;
+
+        quad(x, 1.80f, z - 0.02f,
+             x + 0.22f, 1.80f, z - 0.02f,
+             x + 0.22f, 2.05f, z - 0.02f,
+             x, 2.05f, z - 0.02f,
+             (i % 2) ? 0.2f : 1.0f,
+             (i % 2) ? 1.0f : 0.3f,
+             0.9f);
+    }
+
+    C3D_ImmDrawEnd();
+}
+
+/* RED PLAYER CAR */
 static void drawCar(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Main body */
+    boxShiftX = carX;
+
     box(-0.65f, -1.02f, -3.8f,
          0.65f, -0.72f, -2.2f,
          0.85f, 0.025f, 0.035f);
 
-    /* Cabin */
     box(-0.43f, -0.72f, -3.45f,
          0.43f, -0.42f, -2.65f,
          0.12f, 0.22f, 0.30f);
 
-    /* Roof */
     box(-0.34f, -0.42f, -3.30f,
          0.34f, -0.37f, -2.80f,
          0.80f, 0.025f, 0.035f);
 
-    /* Wheels */
     box(-0.78f, -1.10f, -3.65f,
         -0.58f, -0.80f, -3.30f,
          0.035f, 0.035f, 0.045f);
@@ -265,12 +311,10 @@ static void drawCar(void)
         0.78f, -0.80f, -2.30f,
          0.035f, 0.035f, 0.045f);
 
-    /* Rear spoiler */
     box(-0.58f, -0.68f, -3.88f,
          0.58f, -0.61f, -3.78f,
          0.12f, 0.12f, 0.13f);
 
-    /* Headlights */
     box(-0.50f, -0.90f, -2.23f,
         -0.22f, -0.82f, -2.19f,
          1.0f, 0.85f, 0.45f);
@@ -278,6 +322,8 @@ static void drawCar(void)
     box(0.22f, -0.90f, -2.23f,
          0.50f, -0.82f, -2.19f,
          1.0f, 0.85f, 0.45f);
+
+    boxShiftX = 0.0f;
 
     C3D_ImmDrawEnd();
 }
@@ -385,6 +431,14 @@ static void drawMenu(void)
         printItem(15, "NO", exitChoice == 1);
         printf("\x1b[20;2HA: CONFIRM");
         break;
+
+    case SCREEN_RACE:
+        printf("\x1b[6;4HROAD TO FESTIVAL");
+        printf("\x1b[9;3HLEFT/RIGHT: STEER");
+        printf("\x1b[12;3HFollow the sunset!");
+        printf("\x1b[16;3HFestival ahead!");
+        printf("\x1b[20;2HB: BACK TO MENU");
+        break;
     }
 
     printf("\x1b[24;1H");
@@ -422,7 +476,9 @@ int main(void)
 
     while (aptMainLoop()) {
         hidScanInput();
+
         u32 down = hidKeysDown();
+        u32 held = hidKeysHeld();
 
         if (down & KEY_B) {
             if (screen != SCREEN_MAIN) {
@@ -465,10 +521,15 @@ int main(void)
                 selected = (selected + 1) % 2;
 
             if (down & KEY_A) {
-                if (selected == 0)
-                    statusMessage = "OFFLINE: COMING SOON";
-                else
+                if (selected == 0) {
+                    screen = SCREEN_RACE;
+                    carX = 0.0f;
+                    festivalZ = -36.0f;
+                    roadOffset = 0.0f;
+                    statusMessage = "ROAD TO FESTIVAL!";
+                } else {
                     statusMessage = "MULTIPLAYER: COMING SOON";
+                }
             }
         } else if (screen == SCREEN_EXIT) {
             if (down & KEY_UP || down & KEY_DOWN)
@@ -481,16 +542,36 @@ int main(void)
                 screen = SCREEN_MAIN;
                 selected = 0;
             }
+        } else if (screen == SCREEN_RACE) {
+            if (held & KEY_LEFT)
+                carX -= 0.07f;
+
+            if (held & KEY_RIGHT)
+                carX += 0.07f;
+
+            if (carX < -3.5f)
+                carX = -3.5f;
+
+            if (carX > 3.5f)
+                carX = 3.5f;
+
+            festivalZ += 0.13f;
+
+            if (festivalZ > -4.0f)
+                festivalZ = -36.0f;
         }
 
         if (down & KEY_START)
             break;
 
-        drawMenu();
+        float roadSpeed = (screen == SCREEN_RACE) ? 0.18f : 0.10f;
 
-        roadOffset += 0.10f;
+        roadOffset += roadSpeed;
+
         if (roadOffset >= 3.0f)
             roadOffset -= 3.0f;
+
+        drawMenu();
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
@@ -507,6 +588,10 @@ int main(void)
 
         drawEnvironment();
         drawRoad();
+
+        if (screen == SCREEN_RACE)
+            drawFestivalGate();
+
         drawCar();
 
         C3D_FrameEnd(0);
@@ -524,3 +609,4 @@ int main(void)
 
     return 0;
 }
+
