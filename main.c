@@ -43,7 +43,6 @@ static float roadOffset = 0.0f;
 
 static const char *statusMessage = "WELCOME TO THE COAST!";
 
-/* Send one vertex: position + color. */
 static void vertex(float x, float y, float z,
                    float r, float g, float b)
 {
@@ -76,7 +75,6 @@ static void quad(
              dx, dy, dz, r, g, b);
 }
 
-/* Axis-aligned box. */
 static void box(
     float x1, float y1, float z1,
     float x2, float y2, float z2,
@@ -101,50 +99,53 @@ static void box(
          r*0.5f, g*0.5f, b*0.5f);
 }
 
-/* Sunset, sun and ocean. */
+/* SUNSET, SUN AND OCEAN */
 static void drawEnvironment(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Sky: layered colors above the horizon. */
+    /* Purple sky */
     quad(-80, 15, -40, 80, 15, -40,
-         80, 4, -40, -80, 4, -40,
-         0.20f, 0.12f, 0.38f);
+          80, 4, -40, -80, 4, -40,
+          0.20f, 0.12f, 0.38f);
 
+    /* Pink sky */
     quad(-80, 4, -40, 80, 4, -40,
-         80, 2, -40, -80, 2, -40,
-         0.48f, 0.18f, 0.42f);
+          80, 2, -40, -80, 2, -40,
+          0.48f, 0.18f, 0.42f);
 
+    /* Orange sky */
     quad(-80, 2, -40, 80, 2, -40,
-         80, 0, -40, -80, 0, -40,
-         0.95f, 0.30f, 0.22f);
+          80, 0, -40, -80, 0, -40,
+          0.95f, 0.30f, 0.22f);
 
+    /* Golden horizon */
     quad(-80, 0, -40, 80, 0, -40,
-         80, -1.2f, -40, -80, -1.2f, -40,
-         1.0f, 0.56f, 0.30f);
+          80, -1.2f, -40, -80, -1.2f, -40,
+          1.0f, 0.56f, 0.30f);
 
-    /* Sun, centered in the sunset. */
-    for (int i = 0; i < 32; i++) {
-        float a1 = (float)i * 2.0f * PI / 32.0f;
-        float a2 = (float)(i + 1) * 2.0f * PI / 32.0f;
+    /* Large sun centered at X = 0 */
+    for (int i = 0; i < 48; i++) {
+        float a1 = (float)i * 2.0f * PI / 48.0f;
+        float a2 = (float)(i + 1) * 2.0f * PI / 48.0f;
 
         triangle(
-            -4.0f, 1.1f, -30.0f,
-            -4.0f + cosf(a1) * 2.0f,
-             1.1f + sinf(a1) * 2.0f, -30.0f,
-            -4.0f + cosf(a2) * 2.0f,
-             1.1f + sinf(a2) * 2.0f, -30.0f,
+            0.0f, 1.1f, -30.0f,
+            cosf(a1) * 2.4f,
+            1.1f + sinf(a1) * 2.4f, -30.0f,
+            cosf(a2) * 2.4f,
+            1.1f + sinf(a2) * 2.4f, -30.0f,
             1.0f, 0.72f, 0.32f);
     }
 
-    /* Wide ocean plane below the horizon. */
+    /* Ocean on both sides of the highway */
     quad(-100, -1.20f, -40,
           100, -1.20f, -40,
           100, -1.20f, -2.0f,
          -100, -1.20f, -2.0f,
           0.035f, 0.23f, 0.40f);
 
-    /* A few simple ocean highlights. */
+    /* Water reflections */
     for (int i = 0; i < 12; i++) {
         float z = -25.0f + (float)i * 1.8f;
 
@@ -164,32 +165,33 @@ static void drawEnvironment(void)
     C3D_ImmDrawEnd();
 }
 
-/* Wide road, with perspective toward the horizon. */
+/* LONG HIGHWAY LEADING TOWARD THE SUN */
 static void drawRoad(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Asphalt. The near end appears wider because of perspective. */
+    /* Asphalt: wide foreground, narrow distant end */
     quad(-4.8f, -1.10f, -2.2f,
           4.8f, -1.10f, -2.2f,
-          4.8f, -1.10f, -38.0f,
-         -4.8f, -1.10f, -38.0f,
+          1.15f, -1.10f, -38.0f,
+         -1.15f, -1.10f, -38.0f,
           0.14f, 0.15f, 0.17f);
 
-    /* Left and right road edges. */
+    /* Left road edge */
     quad(-4.8f, -1.085f, -2.2f,
          -4.45f, -1.085f, -2.2f,
-         -4.45f, -1.085f, -38.0f,
-         -4.8f, -1.085f, -38.0f,
+         -1.05f, -1.085f, -38.0f,
+         -1.15f, -1.085f, -38.0f,
           0.95f, 0.79f, 0.53f);
 
+    /* Right road edge */
     quad(4.45f, -1.085f, -2.2f,
          4.8f, -1.085f, -2.2f,
-         4.8f, -1.085f, -38.0f,
-         4.45f, -1.085f, -38.0f,
+         1.15f, -1.085f, -38.0f,
+         1.05f, -1.085f, -38.0f,
           0.95f, 0.79f, 0.53f);
 
-    /* Moving dashed center line. */
+    /* Moving center-line dashes */
     for (int i = 0; i < 13; i++) {
         float z1 = -37.0f + (float)i * 3.0f + roadOffset;
 
@@ -201,59 +203,74 @@ static void drawRoad(void)
         if (z2 > -2.2f)
             z2 = -2.2f;
 
-        quad(-0.12f, -1.075f, z1,
-              0.12f, -1.075f, z1,
-              0.12f, -1.075f, z2,
-             -0.12f, -1.075f, z2,
+        if (z2 <= z1)
+            continue;
+
+        /* Match the stripe width to the tapered road */
+        float t1 = (-z1 - 2.2f) / 35.8f;
+        float t2 = (-z2 - 2.2f) / 35.8f;
+
+        if (t1 < 0.0f) t1 = 0.0f;
+        if (t1 > 1.0f) t1 = 1.0f;
+        if (t2 < 0.0f) t2 = 0.0f;
+        if (t2 > 1.0f) t2 = 1.0f;
+
+        float w1 = 0.12f * (1.0f - t1) + 0.035f * t1;
+        float w2 = 0.12f * (1.0f - t2) + 0.035f * t2;
+
+        quad(-w1, -1.075f, z1,
+              w1, -1.075f, z1,
+              w2, -1.075f, z2,
+             -w2, -1.075f, z2,
               1.0f, 0.86f, 0.58f);
     }
 
     C3D_ImmDrawEnd();
 }
 
-/* Simple red sports car, facing forward along the road. */
+/* RED SPORTS CAR */
 static void drawCar(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Main body. */
+    /* Main body */
     box(-0.65f, -1.02f, -3.8f,
          0.65f, -0.72f, -2.2f,
          0.85f, 0.025f, 0.035f);
 
-    /* Cabin and windshield. */
+    /* Cabin */
     box(-0.43f, -0.72f, -3.45f,
          0.43f, -0.42f, -2.65f,
          0.12f, 0.22f, 0.30f);
 
-    /* Roof. */
+    /* Roof */
     box(-0.34f, -0.42f, -3.30f,
          0.34f, -0.37f, -2.80f,
          0.80f, 0.025f, 0.035f);
 
-    /* Four wheels. */
+    /* Wheels */
     box(-0.78f, -1.10f, -3.65f,
-     -0.58f, -0.80f, -3.30f,
-      0.035f, 0.035f, 0.045f);
+        -0.58f, -0.80f, -3.30f,
+         0.035f, 0.035f, 0.045f);
 
     box(0.58f, -1.10f, -3.65f,
-      0.78f, -0.80f, -3.30f,
-      0.035f, 0.035f, 0.045f);
+        0.78f, -0.80f, -3.30f,
+         0.035f, 0.035f, 0.045f);
 
     box(-0.78f, -1.10f, -2.65f,
-     -0.58f, -0.80f, -2.30f,
-      0.035f, 0.035f, 0.045f);
+        -0.58f, -0.80f, -2.30f,
+         0.035f, 0.035f, 0.045f);
 
     box(0.58f, -1.10f, -2.65f,
-      0.78f, -0.80f, -2.30f,
-      0.035f, 0.035f, 0.045f);
+        0.78f, -0.80f, -2.30f,
+         0.035f, 0.035f, 0.045f);
 
-    /* Rear spoiler. */
+    /* Rear spoiler */
     box(-0.58f, -0.68f, -3.88f,
          0.58f, -0.61f, -3.78f,
          0.12f, 0.12f, 0.13f);
 
-    /* Front headlights. */
+    /* Headlights */
     box(-0.50f, -0.90f, -2.23f,
         -0.22f, -0.82f, -2.19f,
          1.0f, 0.85f, 0.45f);
@@ -332,18 +349,17 @@ static void drawMenu(void)
 
     switch (screen) {
     case SCREEN_MAIN:
-        printItem(8,  "PLAY",     selected == 0);
+        printItem(8, "PLAY", selected == 0);
         printItem(11, "SETTINGS", selected == 1);
-        printItem(14, "SAVES",    selected == 2);
-        printItem(17, "EXIT",     selected == 3);
-
+        printItem(14, "SAVES", selected == 2);
+        printItem(17, "EXIT", selected == 3);
         printf("\x1b[21;2HUP/DOWN: SELECT");
         printf("\x1b[22;2HA: CONFIRM");
         break;
 
     case SCREEN_PLAY:
         printf("\x1b[6;4HSELECT GAME MODE");
-        printItem(10, "OFFLINE",     selected == 0);
+        printItem(10, "OFFLINE", selected == 0);
         printItem(13, "MULTIPLAYER", selected == 1);
         printf("\x1b[20;2HB: BACK");
         break;
@@ -366,7 +382,7 @@ static void drawMenu(void)
     case SCREEN_EXIT:
         printf("\x1b[8;3HQUIT THE GAME?");
         printItem(12, "YES", exitChoice == 0);
-        printItem(15, "NO",  exitChoice == 1);
+        printItem(15, "NO", exitChoice == 1);
         printf("\x1b[20;2HA: CONFIRM");
         break;
     }
