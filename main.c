@@ -1,713 +1,246 @@
-
 #include <3ds.h>
 #include <citro3d.h>
-#include <stdio.h>
+#include <citro2d.h>
+#include <string.h>
 #include <math.h>
+#include <stdio.h>
 
-#include "vshader_shbin.h"
+// Shader (генерируется из vshader.v.pica через picasso + bin2s)
+#include "vshader_v_pica_shbin.h"
 
-#define PI 3.14159265f
-#define MENU_COUNT 4
+// ---- Unit cube (36 vertices, centered at origin) ----
+typedef struct { float x, y, z; } vertex;
+static const vertex cubeVerts[36] = {
+    {-0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},
+    {-0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{-0.5f, 0.5f, 0.5f},
+    { 0.5f,-0.5f,-0.5f},{-0.5f,-0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f},{-0.5f,-0.5f, 0.5f},{-0.5f, 0.5f, 0.5f},
+    {-0.5f,-0.5f,-0.5f},{-0.5f, 0.5f, 0.5f},{-0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f, 0.5f},
+    {-0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},
+    {-0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f, 0.5f},
+    {-0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f, 0.5f},{-0.5f,-0.5f, 0.5f},
+};
 
-#define DISPLAY_TRANSFER_FLAGS \
-    (GX_TRANSFER_FLIP_VERT(0) | \
-     GX_TRANSFER_OUT_TILED(0) | \
-     GX_TRANSFER_RAW_COPY(0) | \
-     GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | \
-     GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
-     GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
-
-typedef enum {
-    SCREEN_MAIN,
-    SCREEN_PLAY,
-    SCREEN_SETTINGS,
-    SCREEN_SAVES,
-    SCREEN_EXIT,
-    SCREEN_RACE
-} MenuScreen;
-
-static DVLB_s *dvlb = NULL;
+// ---- Globals ----
+static DVLB_s* vshader_dvlb;
 static shaderProgram_s program;
+static int uLoc_projection, uLoc_modelView, uLoc_color;
 static C3D_Mtx projection;
-static C3D_Mtx modelView;
-static C3D_RenderTarget *target = NULL;
+static C3D_RenderTarget* topTarget;
+static C3D_RenderTarget* bottomTarget;
+static C3D_BufInfo* bufInfo;
+static void* vbo_data;
 
-static int uProjection = -1;
-static int uModelView = -1;
-static int sceneReady = 0;
-
-static PrintConsole bottomScreen;
-static MenuScreen screen = SCREEN_MAIN;
-
-static int selected = 0;
-static int exitChoice = 1;
-
-static float roadOffset = 0.0f;
+// Car state
 static float carX = 0.0f;
-static float festivalZ = -36.0f;
-static float boxShiftX = 0.0f;
+static float carZ = 0.0f;
+static float carAngle = 0.0f;
+static float carSpeed = 0.0f;
 
-static const char *statusMessage = "WELCOME TO THE COAST!";
+// ---- Drawing helpers ----
+static void drawBox(C3D_Mtx* view, float x, float y, float z,
+                    float sx, float sy, float sz, u32 color) {
+    C3D_Mtx modelView;
+    Mtx_Copy(&modelView, view);
+    Mtx_Translate(&modelView, x, y, z, true);
+    Mtx_Scale(&modelView, sx, sy, sz);
 
-static void vertex(float x, float y, float z,
-                   float r, float g, float b)
-{
-    C3D_ImmSendAttrib(x, y, z, 1.0f);
-    C3D_ImmSendAttrib(r, g, b, 1.0f);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_modelView, &modelView);
+    C3D_FVUnifSet(GPU_VERTEX_SHADER, uLoc_color,
+                  ((color >> 24) & 0xFF) / 255.0f,
+                  ((color >> 16) & 0xFF) / 255.0f,
+                  ((color >>  8) & 0xFF) / 255.0f,
+                  ( color        & 0xFF) / 255.0f);
+    C3D_DrawArrays(GPU_TRIANGLES, 0, 36);
 }
 
-static void triangle(
-    float ax, float ay, float az,
-    float bx, float by, float bz,
-    float cx, float cy, float cz,
-    float r, float g, float b)
-{
-    vertex(ax, ay, az, r, g, b);
-    vertex(bx, by, bz, r, g, b);
-    vertex(cx, cy, cz, r, g, b);
+static void drawCar(C3D_Mtx* view) {
+    // Корпус (низкий, широкий)
+    C3D_Mtx carView;
+    Mtx_Copy(&carView, view);
+    Mtx_Translate(&carView, carX, 0.0f, carZ, true);
+    Mtx_RotateY(&carView, carAngle, true);
+
+    // Основной корпус — тёмно-красный
+    drawBox(&carView, 0.0f, 0.55f, 0.0f, 1.8f, 0.55f, 4.2f, 0xB01010FF);
+    // Крыша / кабина
+    drawBox(&carView, 0.0f, 1.05f, -0.2f, 1.4f, 0.55f, 2.0f, 0x901010FF);
+    // Капот (чуть выше носа)
+    drawBox(&carView, 0.0f, 0.75f, 1.5f, 1.6f, 0.25f, 1.2f, 0xB01010FF);
+    // Стёкла (тёмно-синие)
+    drawBox(&carView, 0.0f, 1.10f, 0.8f, 1.35f, 0.40f, 0.05f, 0x203050FF);
+    drawBox(&carView, 0.0f, 1.10f, -1.2f, 1.35f, 0.40f, 0.05f, 0x203050FF);
+    // Фары (жёлтые)
+    drawBox(&carView, -0.6f, 0.60f, 2.15f, 0.35f, 0.20f, 0.05f, 0xFFEE88FF);
+    drawBox(&carView,  0.6f, 0.60f, 2.15f, 0.35f, 0.20f, 0.05f, 0xFFEE88FF);
+    // Задние фонари (красные)
+    drawBox(&carView, -0.6f, 0.60f, -2.15f, 0.35f, 0.20f, 0.05f, 0xFF3030FF);
+    drawBox(&carView,  0.6f, 0.60f, -2.15f, 0.35f, 0.20f, 0.05f, 0xFF3030FF);
+
+    // Колёса (4 шт, чёрные)
+    drawBox(&carView, -0.95f, 0.35f,  1.4f, 0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView,  0.95f, 0.35f,  1.4f, 0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView, -0.95f, 0.35f, -1.4f, 0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView,  0.95f, 0.35f, -1.4f, 0.35f, 0.70f, 0.70f, 0x101010FF);
 }
 
-static void quad(
-    float ax, float ay, float az,
-    float bx, float by, float bz,
-    float cx, float cy, float cz,
-    float dx, float dy, float dz,
-    float r, float g, float b)
-{
-    triangle(ax, ay, az, bx, by, bz,
-             cx, cy, cz, r, g, b);
+static void renderTopScreen(void) {
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    C2D_TargetClear(topTarget, C2D_Color32(0xFF, 0x8C, 0x42, 0xFF));
+    C2D_SceneBegin(topTarget);
 
-    triangle(ax, ay, az, cx, cy, cz,
-             dx, dy, dz, r, g, b);
+    // Камера сзади и чуть сверху, смотрит на закат
+    C3D_Mtx view;
+    Mtx_LookAt(&view,
+               FVec3_New(carX + 6.0f * sinf(carAngle),
+                         3.0f,
+                         carZ + 6.0f * cosf(carAngle)),
+               FVec3_New(carX, 0.8f, carZ),
+               FVec3_New(0.0f, 1.0f, 0.0f),
+               false);
+
+    // Дорога (тёмно-серый плоский бокс)
+    drawBox(&view, 0.0f, -0.05f, carZ - 20.0f, 8.0f, 0.1f, 80.0f, 0x2A2A2AFF);
+
+    // Разметка (жёлтая полоса)
+    drawBox(&view, 0.0f, 0.01f, carZ - 20.0f, 0.15f, 0.02f, 80.0f, 0xE0C040FF);
+
+    // Солнце (большой жёлто-оранжевый бокс вдалеке)
+    drawBox(&view, 0.0f, 6.0f, carZ - 60.0f, 12.0f, 12.0f, 0.5f, 0xFFD070FF);
+
+    // Машина
+    drawCar(&view);
+
+    C3D_FrameEnd(0);
 }
 
-static void box(
-    float x1, float y1, float z1,
-    float x2, float y2, float z2,
-    float r, float g, float b)
-{
-    x1 += boxShiftX;
-    x2 += boxShiftX;
+// ---- Кнопки на нижнем экране ----
+typedef struct { float x, y, w, h; const char* label; u32 color; } Button;
+static Button buttons[4] = {
+    {  20.0f, 150.0f, 70.0f, 60.0f, "<",  0x3080FFFF },
+    { 130.0f, 150.0f, 70.0f, 60.0f, ">",  0x3080FFFF },
+    { 240.0f,  40.0f, 60.0f, 80.0f, "GAS",0x30C040FF },
+    { 240.0f, 150.0f, 60.0f, 60.0f, "BRK",0xC03030FF },
+};
 
-    float a = x1, c = x2;
-    float d = y1, e = y2;
-    float f = z1, h = z2;
-
-    quad(a,d,f, c,d,f, c,e,f, a,e,f, r,g,b);
-    quad(c,d,h, a,d,h, a,e,h, c,e,h, r,g,b);
-
-    quad(a,d,h, a,d,f, a,e,f, a,e,h,
-         r*0.65f, g*0.65f, b*0.65f);
-
-    quad(c,d,f, c,d,h, c,e,h, c,e,f,
-         r*0.8f, g*0.8f, b*0.8f);
-
-    quad(a,e,f, c,e,f, c,e,h, a,e,h, r,g,b);
-
-    quad(a,d,h, c,d,h, c,d,f, a,d,f,
-         r*0.5f, g*0.5f, b*0.5f);
-}
-
-/* SUNSET, SUN AND OCEAN */
-static void drawEnvironment(void)
-{
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
-
-    quad(-80, 15, -40, 80, 15, -40,
-          80, 4, -40, -80, 4, -40,
-          0.20f, 0.12f, 0.38f);
-
-    quad(-80, 4, -40, 80, 4, -40,
-          80, 2, -40, -80, 2, -40,
-          0.48f, 0.18f, 0.42f);
-
-    quad(-80, 2, -40, 80, 2, -40,
-          80, 0, -40, -80, 0, -40,
-          0.95f, 0.30f, 0.22f);
-
-    quad(-80, 0, -40, 80, 0, -40,
-          80, -1.2f, -40, -80, -1.2f, -40,
-          1.0f, 0.56f, 0.30f);
-
-    for (int i = 0; i < 48; i++) {
-        float a1 = (float)i * 2.0f * PI / 48.0f;
-        float a2 = (float)(i + 1) * 2.0f * PI / 48.0f;
-
-        triangle(
-            0.0f, 1.1f, -18.0f,
-            cosf(a1) * 2.4f,
-            1.1f + sinf(a1) * 2.4f, -18.0f,
-            cosf(a2) * 2.4f,
-            1.1f + sinf(a2) * 2.4f, -18.0f,
-            1.0f, 0.72f, 0.32f);
+static int buttonHit(float px, float py) {
+    for (int i = 0; i < 4; i++) {
+        if (px >= buttons[i].x && px <= buttons[i].x + buttons[i].w &&
+            py >= buttons[i].y && py <= buttons[i].y + buttons[i].h) return i;
     }
-
-    quad(-100, -1.20f, -40,
-          100, -1.20f, -40,
-          100, -1.20f, -2.0f,
-         -100, -1.20f, -2.0f,
-          0.035f, 0.23f, 0.40f);
-
-    for (int i = 0; i < 12; i++) {
-        float z = -25.0f + (float)i * 1.8f;
-
-        quad(-9.0f, -1.17f, z,
-             -7.5f, -1.17f, z,
-             -7.5f, -1.17f, z - 0.06f,
-             -9.0f, -1.17f, z - 0.06f,
-             0.12f, 0.38f, 0.52f);
-
-        quad(7.5f, -1.17f, z - 0.5f,
-             9.0f, -1.17f, z - 0.5f,
-             9.0f, -1.17f, z - 0.56f,
-             7.5f, -1.17f, z - 0.56f,
-             0.12f, 0.38f, 0.52f);
-    }
-
-    C3D_ImmDrawEnd();
+    return -1;
 }
 
-/* LONG HIGHWAY */
-static void drawRoad(void)
-{
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
+static void renderBottomScreen(int activeBtn) {
+    C2D_TargetClear(bottomTarget, C2D_Color32(0x20, 0x20, 0x30, 0xFF));
+    C2D_SceneBegin(bottomTarget);
 
-    quad(-4.8f, -1.10f, -2.2f,
-          4.8f, -1.10f, -2.2f,
-          1.15f, -1.10f, -38.0f,
-         -1.15f, -1.10f, -38.0f,
-          0.14f, 0.15f, 0.17f);
-
-    quad(-4.8f, -1.085f, -2.2f,
-         -4.45f, -1.085f, -2.2f,
-         -1.05f, -1.085f, -38.0f,
-         -1.15f, -1.085f, -38.0f,
-          0.95f, 0.79f, 0.53f);
-
-    quad(4.45f, -1.085f, -2.2f,
-         4.8f, -1.085f, -2.2f,
-         1.15f, -1.085f, -38.0f,
-         1.05f, -1.085f, -38.0f,
-          0.95f, 0.79f, 0.53f);
-
-    for (int i = 0; i < 13; i++) {
-        float z1 = -37.0f + (float)i * 3.0f + roadOffset;
-
-        while (z1 > -2.4f)
-            z1 -= 36.0f;
-
-        float z2 = z1 + 1.35f;
-
-        if (z2 > -2.2f)
-            z2 = -2.2f;
-
-        if (z2 <= z1)
-            continue;
-
-        float t1 = (-z1 - 2.2f) / 35.8f;
-        float t2 = (-z2 - 2.2f) / 35.8f;
-
-        if (t1 < 0.0f) t1 = 0.0f;
-        if (t1 > 1.0f) t1 = 1.0f;
-        if (t2 < 0.0f) t2 = 0.0f;
-        if (t2 > 1.0f) t2 = 1.0f;
-
-        float w1 = 0.12f * (1.0f - t1) + 0.035f * t1;
-        float w2 = 0.12f * (1.0f - t2) + 0.035f * t2;
-
-        quad(-w1, -1.075f, z1,
-              w1, -1.075f, z1,
-              w2, -1.075f, z2,
-             -w2, -1.075f, z2,
-              1.0f, 0.86f, 0.58f);
+    for (int i = 0; i < 4; i++) {
+        Button* b = &buttons[i];
+        u32 c = b->color;
+        if (i == activeBtn) c = 0xFFFFFFFF;
+        C2D_DrawRectSolid(b->x, b->y, 0.0f, b->w, b->h, C2D_Color32(c>>24, (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF));
+        C2D_DrawRectSolid(b->x + 2, b->y + 2, 0.0f, b->w - 4, b->h - 4,
+                          C2D_Color32(0x40, 0x40, 0x50, 0xFF));
+        // (Текст можно добавить через C2D_DrawText, если подключишь шрифт)
     }
-
-    C3D_ImmDrawEnd();
+    C2D_Flush();
 }
 
-/* FESTIVAL ENTRANCE */
-static void drawFestivalGate(void)
-{
-    float z = festivalZ;
+int main(void) {
+    gfxInitDefault();
+    hidInit();
+    romfsInit();
+    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
+    C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
+    C2D_Prepare();
 
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
+    topTarget = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+    bottomTarget = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
-    quad(-3.7f, -1.05f, z,
-         -3.25f, -1.05f, z,
-         -3.25f, 2.2f, z,
-         -3.7f, 2.2f, z,
-         0.15f, 0.75f, 1.0f);
-
-    quad(3.25f, -1.05f, z,
-         3.7f, -1.05f, z,
-         3.7f, 2.2f, z,
-         3.25f, 2.2f, z,
-         1.0f, 0.25f, 0.55f);
-
-    quad(-3.7f, 1.75f, z,
-          3.7f, 1.75f, z,
-          3.7f, 2.2f, z,
-         -3.7f, 2.2f, z,
-          1.0f, 0.55f, 0.12f);
-
-    for (int i = 0; i < 7; i++) {
-        float x = -2.8f + (float)i * 0.93f;
-
-        quad(x, 1.80f, z - 0.02f,
-             x + 0.22f, 1.80f, z - 0.02f,
-             x + 0.22f, 2.05f, z - 0.02f,
-             x, 2.05f, z - 0.02f,
-             (i % 2) ? 0.2f : 1.0f,
-             (i % 2) ? 1.0f : 0.3f,
-             0.9f);
-    }
-
-    C3D_ImmDrawEnd();
-}
-
-/* LOW-POLY SPORTS CAR WHEELS */
-static void drawWheel(float cx, float cy, float cz)
-{
-    const int segments = 12;
-    const float radius = 0.22f;
-    const float width = 0.18f;
-
-    float xl = cx + carX - width * 0.5f;
-    float xr = cx + carX + width * 0.5f;
-
-    for (int i = 0; i < segments; i++) {
-        float a1 = 2.0f * PI * (float)i / segments;
-        float a2 = 2.0f * PI * (float)(i + 1) / segments;
-
-        float y1 = cy + cosf(a1) * radius;
-        float z1 = cz + sinf(a1) * radius;
-        float y2 = cy + cosf(a2) * radius;
-        float z2 = cz + sinf(a2) * radius;
-
-        quad(xl, y1, z1,
-             xr, y1, z1,
-             xr, y2, z2,
-             xl, y2, z2,
-             0.025f, 0.025f, 0.032f);
-    }
-
-    for (int side = 0; side < 2; side++) {
-        float x = side ? xr + 0.002f : xl - 0.002f;
-
-        for (int i = 0; i < segments; i++) {
-            float a1 = 2.0f * PI * (float)i / segments;
-            float a2 = 2.0f * PI * (float)(i + 1) / segments;
-
-            triangle(
-                x, cy, cz,
-                x, cy + cosf(a1) * 0.135f,
-                   cz + sinf(a1) * 0.135f,
-                x, cy + cosf(a2) * 0.135f,
-                   cz + sinf(a2) * 0.135f,
-                0.48f, 0.51f, 0.56f);
-
-            triangle(
-                x, cy, cz,
-                x, cy + cosf(a1) * 0.055f,
-                   cz + sinf(a1) * 0.055f,
-                x, cy + cosf(a2) * 0.055f,
-                   cz + sinf(a2) * 0.055f,
-                0.10f, 0.11f, 0.13f);
-        }
-    }
-}
-
-/* RED SPORTS CAR - FRONT POINTS DOWN THE ROAD */
-static void drawCar(void)
-{
-    boxShiftX = carX;
-
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
-
-    /* Main low red body */
-    box(-0.65f, -0.99f, -3.78f,
-         0.65f, -0.75f, -2.25f,
-         0.78f, 0.018f, 0.035f);
-
-    /* Hood */
-    quad(-0.48f, -0.75f, -3.78f,
-          0.48f, -0.75f, -3.78f,
-          0.37f, -0.68f, -3.28f,
-         -0.37f, -0.68f, -3.28f,
-          0.94f, 0.035f, 0.045f);
-
-    /* Angular dark cabin */
-    quad(-0.38f, -0.72f, -3.30f,
-          0.38f, -0.72f, -3.30f,
-          0.30f, -0.48f, -2.88f,
-         -0.30f, -0.48f, -2.88f,
-          0.035f, 0.055f, 0.075f);
-
-    /* Roof */
-    quad(-0.30f, -0.48f, -2.88f,
-          0.30f, -0.48f, -2.88f,
-          0.25f, -0.45f, -2.63f,
-         -0.25f, -0.45f, -2.63f,
-          0.78f, 0.018f, 0.035f);
-
-    /* Side windows */
-    quad(-0.385f, -0.70f, -3.25f,
-         -0.315f, -0.49f, -2.90f,
-         -0.275f, -0.48f, -2.66f,
-         -0.365f, -0.70f, -2.70f,
-          0.12f, 0.20f, 0.26f);
-
-    quad(0.385f, -0.70f, -3.25f,
-         0.315f, -0.49f, -2.90f,
-         0.275f, -0.48f, -2.66f,
-         0.365f, -0.70f, -2.70f,
-          0.12f, 0.20f, 0.26f);
-
-    /* Side skirts */
-    box(-0.67f, -0.99f, -3.48f,
-        -0.61f, -0.91f, -2.48f,
-         0.035f, 0.035f, 0.04f);
-
-    box(0.61f, -0.99f, -3.48f,
-        0.67f, -0.91f, -2.48f,
-         0.035f, 0.035f, 0.04f);
-
-    /* Front splitter */
-    box(-0.60f, -1.015f, -3.91f,
-         0.60f, -0.97f, -3.73f,
-         0.025f, 0.025f, 0.03f);
-
-    /* Headlights at the front */
-    box(-0.48f, -0.85f, -3.88f,
-        -0.23f, -0.77f, -3.80f,
-         1.0f, 0.88f, 0.55f);
-
-    box(0.23f, -0.85f, -3.88f,
-        0.48f, -0.77f, -3.80f,
-        1.0f, 0.88f, 0.55f);
-
-    /* Front grille */
-    box(-0.20f, -0.94f, -3.90f,
-         0.20f, -0.84f, -3.82f,
-         0.035f, 0.035f, 0.04f);
-
-    /* Rear lights facing the player */
-    box(-0.51f, -0.88f, -2.30f,
-        -0.23f, -0.79f, -2.23f,
-         1.0f, 0.025f, 0.025f);
-
-    box(0.23f, -0.88f, -2.30f,
-         0.51f, -0.79f, -2.23f,
-         1.0f, 0.025f, 0.025f);
-
-    /* Spoiler supports */
-    box(-0.70f, -0.65f, -2.38f,
-        -0.63f, -0.47f, -2.31f,
-         0.06f, 0.06f, 0.07f);
-
-    box(0.63f, -0.65f, -2.38f,
-         0.70f, -0.47f, -2.31f,
-         0.06f, 0.06f, 0.07f);
-
-    /* Wide rear wing */
-    box(-0.78f, -0.47f, -2.43f,
-         0.78f, -0.40f, -2.25f,
-         0.025f, 0.025f, 0.03f);
-
-    C3D_ImmDrawEnd();
-
-    /* Wheels have their own drawing batch */
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
-
-    drawWheel(-0.61f, -0.91f, -3.42f);
-    drawWheel( 0.61f, -0.91f, -3.42f);
-    drawWheel(-0.61f, -0.91f, -2.57f);
-    drawWheel( 0.61f, -0.91f, -2.57f);
-
-    C3D_ImmDrawEnd();
-
-    boxShiftX = 0.0f;
-}
-
-static int initScene(void)
-{
-    dvlb = DVLB_ParseFile((u32 *)vshader_shbin,
-                          vshader_shbin_size);
-
-    if (!dvlb)
-        return 0;
-
+    // ---- Shader ----
+    vshader_dvlb = DVLB_ParseFile((u32*)vshader_v_pica_shbin, vshader_v_pica_shbin_size);
     shaderProgramInit(&program);
-    shaderProgramSetVsh(&program, &dvlb->DVLE[0]);
+    shaderProgramSetVsh(&program, &vshader_dvlb->DVLE[0]);
     C3D_BindProgram(&program);
 
-    uProjection = shaderInstanceGetUniformLocation(
-        program.vertexShader, "projection");
+    uLoc_projection = shaderInstanceGetUniformLocation(program.vertexShader, "projection");
+    uLoc_modelView  = shaderInstanceGetUniformLocation(program.vertexShader, "modelView");
+    uLoc_color      = shaderInstanceGetUniformLocation(program.vertexShader, "uColor");
 
-    uModelView = shaderInstanceGetUniformLocation(
-        program.vertexShader, "modelView");
+    // ---- VBO ----
+    vbo_data = linearAlloc(sizeof(cubeVerts));
+    memcpy(vbo_data, cubeVerts, sizeof(cubeVerts));
+    bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    BufInfo_Add(bufInfo, vbo_data, sizeof(vertex), 1, 0);
 
-    if (uProjection < 0 || uModelView < 0) {
-        shaderProgramFree(&program);
-        DVLB_Free(dvlb);
-        dvlb = NULL;
-        return 0;
-    }
+    // ---- Attributes ----
+    C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
+    AttrInfo_Init(attrInfo);
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);
 
-    C3D_AttrInfo *attr = C3D_GetAttrInfo();
-    AttrInfo_Init(attr);
-    AttrInfo_AddLoader(attr, 0, GPU_FLOAT, 3);
-    AttrInfo_AddLoader(attr, 1, GPU_FLOAT, 4);
+    // ---- Projection ----
+    Mtx_PerspTilt(&projection, C3D_Rad(50.0f), 400.0f / 240.0f, 0.1f, 100.0f);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
 
-    C3D_TexEnv *env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
-    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+    C3D_CullFace(GPU_CULL_NONE);
+    C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
 
-    Mtx_PerspTilt(
-        &projection,
-        C3D_AngleFromDegrees(50.0f),
-        C3D_AspectRatioTop,
-        0.1f, 100.0f, false);
-
-    Mtx_Identity(&modelView);
-
-    sceneReady = 1;
-    return 1;
-}
-
-static void printItem(int row, const char *label, int active)
-{
-    printf("\x1b[%d;4H", row);
-
-    if (active)
-        printf("> %s <", label);
-    else
-        printf("  %s", label);
-}
-
-static void drawMenu(void)
-{
-    consoleSelect(&bottomScreen);
-    consoleClear();
-
-    printf("\x1b[1;5HCOASTAL RACER 3DS");
-    printf("\x1b[3;7HSUNSET COAST");
-
-    switch (screen) {
-    case SCREEN_MAIN:
-        printItem(8, "PLAY", selected == 0);
-        printItem(11, "SETTINGS", selected == 1);
-        printItem(14, "SAVES", selected == 2);
-        printItem(17, "EXIT", selected == 3);
-        printf("\x1b[21;2HUP/DOWN: SELECT");
-        printf("\x1b[22;2HA: CONFIRM");
-        break;
-
-    case SCREEN_PLAY:
-        printf("\x1b[6;4HSELECT GAME MODE");
-        printItem(10, "OFFLINE", selected == 0);
-        printItem(13, "MULTIPLAYER", selected == 1);
-        printf("\x1b[20;2HB: BACK");
-        break;
-
-    case SCREEN_SETTINGS:
-        printf("\x1b[8;3HSETTINGS");
-        printf("\x1b[11;3HComing soon!");
-        printf("\x1b[14;3HSound and controls");
-        printf("\x1b[20;2HB: BACK");
-        break;
-
-    case SCREEN_SAVES:
-        printf("\x1b[8;3HSAVE DATA");
-        printf("\x1b[11;3HComing soon!");
-        printf("\x1b[14;3HProgress will be");
-        printf("\x1b[15;3Hsaved here.");
-        printf("\x1b[20;2HB: BACK");
-        break;
-
-    case SCREEN_EXIT:
-        printf("\x1b[8;3HQUIT THE GAME?");
-        printItem(12, "YES", exitChoice == 0);
-        printItem(15, "NO", exitChoice == 1);
-        printf("\x1b[20;2HA: CONFIRM");
-        break;
-
-    case SCREEN_RACE:
-        printf("\x1b[6;4HROAD TO FESTIVAL");
-        printf("\x1b[9;3HLEFT/RIGHT: STEER");
-        printf("\x1b[12;3HFollow the sunset!");
-        printf("\x1b[16;3HFestival ahead!");
-        printf("\x1b[20;2HB: BACK TO MENU");
-        break;
-    }
-
-    printf("\x1b[24;1H");
-    printf("%.30s", statusMessage);
-}
-
-int main(void)
-{
-    gfxInitDefault();
-    consoleInit(GFX_BOTTOM, &bottomScreen);
-
-    if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
-        gfxExit();
-        return 1;
-    }
-
-    target = C3D_RenderTargetCreate(
-        240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
-
-    if (!target) {
-        C3D_Fini();
-        gfxExit();
-        return 1;
-    }
-
-    C3D_RenderTargetSetOutput(
-        target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
-
-    if (!initScene()) {
-        C3D_RenderTargetDelete(target);
-        C3D_Fini();
-        gfxExit();
-        return 1;
-    }
+    int activeBtn = -1;
 
     while (aptMainLoop()) {
         hidScanInput();
+        u32 kDown = hidKeysDown();
+        u32 kHeld = hidKeysHeld();
+        if (kDown & KEY_START) break;
 
-        u32 down = hidKeysDown();
-        u32 held = hidKeysHeld();
+        touchPosition touch;
+        hidTouchRead(&touch);
 
-        if (down & KEY_B) {
-            if (screen != SCREEN_MAIN) {
-                screen = SCREEN_MAIN;
-                selected = 0;
-                statusMessage = "WELCOME TO THE COAST!";
-            }
+        // Determine active button
+        activeBtn = -1;
+        if (kHeld & KEY_TOUCH) {
+            activeBtn = buttonHit(touch.px, touch.py);
         }
 
-        if (screen == SCREEN_MAIN) {
-            if (down & KEY_UP)
-                selected = (selected + MENU_COUNT - 1) % MENU_COUNT;
+        // ---- Logic ----
+        bool gas   = (activeBtn == 2) || (kHeld & KEY_A);
+        bool brake = (activeBtn == 3) || (kHeld & KEY_B);
+        bool left  = (activeBtn == 0) || (kHeld & KEY_DLEFT);
+        bool right = (activeBtn == 1) || (kHeld & KEY_DRIGHT);
 
-            if (down & KEY_DOWN)
-                selected = (selected + 1) % MENU_COUNT;
+        if (gas)   carSpeed += 0.08f;
+        if (brake) carSpeed -= 0.12f;
+        if (carSpeed > 2.0f) carSpeed = 2.0f;
+        if (carSpeed < -1.0f) carSpeed = -1.0f;
+        if (!gas && !brake) carSpeed *= 0.96f;
 
-            if (down & KEY_A) {
-                switch (selected) {
-                case 0:
-                    screen = SCREEN_PLAY;
-                    selected = 0;
-                    break;
-                case 1:
-                    screen = SCREEN_SETTINGS;
-                    break;
-                case 2:
-                    screen = SCREEN_SAVES;
-                    break;
-                case 3:
-                    screen = SCREEN_EXIT;
-                    exitChoice = 1;
-                    break;
-                }
-            }
-        } else if (screen == SCREEN_PLAY) {
-            if (down & KEY_UP)
-                selected = (selected + 1) % 2;
+        float steer = 0.0f;
+        if (left)  steer =  0.06f;
+        if (right) steer = -0.06f;
+        if (fabsf(carSpeed) > 0.01f) carAngle += steer * (carSpeed > 0 ? 1.0f : -1.0f);
 
-            if (down & KEY_DOWN)
-                selected = (selected + 1) % 2;
+        carX += sinf(carAngle) * carSpeed;
+        carZ += cosf(carAngle) * carSpeed;
 
-            if (down & KEY_A) {
-                if (selected == 0) {
-                    screen = SCREEN_RACE;
-                    carX = 0.0f;
-                    festivalZ = -36.0f;
-                    roadOffset = 0.0f;
-                    statusMessage = "ROAD TO FESTIVAL!";
-                } else {
-                    statusMessage = "MULTIPLAYER: COMING SOON";
-                }
-            }
-        } else if (screen == SCREEN_EXIT) {
-            if (down & KEY_UP || down & KEY_DOWN)
-                exitChoice = 1 - exitChoice;
-
-            if (down & KEY_A) {
-                if (exitChoice == 0)
-                    break;
-
-                screen = SCREEN_MAIN;
-                selected = 0;
-            }
-        } else if (screen == SCREEN_RACE) {
-            if (held & KEY_LEFT)
-                carX -= 0.07f;
-
-            if (held & KEY_RIGHT)
-                carX += 0.07f;
-
-            if (carX < -3.5f)
-                carX = -3.5f;
-
-            if (carX > 3.5f)
-                carX = 3.5f;
-
-            festivalZ += 0.13f;
-
-            if (festivalZ > -4.0f)
-                festivalZ = -36.0f;
-        }
-
-        if (down & KEY_START)
-            break;
-
-        float roadSpeed = (screen == SCREEN_RACE) ? 0.18f : 0.10f;
-
-        roadOffset += roadSpeed;
-
-        if (roadOffset >= 3.0f)
-            roadOffset -= 3.0f;
-
-        drawMenu();
-
-        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-
-        C3D_RenderTargetClear(
-            target, C3D_CLEAR_ALL, 0xF08A42FF, 0);
-
-        C3D_FrameDrawOn(target);
-
-        C3D_FVUnifMtx4x4(
-            GPU_VERTEX_SHADER, uProjection, &projection);
-
-        C3D_FVUnifMtx4x4(
-            GPU_VERTEX_SHADER, uModelView, &modelView);
-
-        drawEnvironment();
-        drawRoad();
-
-        if (screen == SCREEN_RACE)
-            drawFestivalGate();
-
-        drawCar();
-
-        C3D_FrameEnd(0);
+        // ---- Render ----
+        renderTopScreen();
+        renderBottomScreen(activeBtn);
     }
 
-    if (sceneReady)
-        shaderProgramFree(&program);
-
-    if (dvlb)
-        DVLB_Free(dvlb);
-
-    C3D_RenderTargetDelete(target);
+    // ---- Cleanup ----
+    shaderProgramFree(&program);
+    DVLB_Free(vshader_dvlb);
+    linearFree(vbo_data);
+    C2D_Fini();
     C3D_Fini();
+    romfsExit();
+    hidExit();
     gfxExit();
-
     return 0;
 }
-
