@@ -63,9 +63,6 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-# Включаем romfs для картинок
-export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)
-
 .PHONY: all clean
 
 all: $(BUILD)
@@ -86,7 +83,16 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-$(OUTPUT).3dsx: $(OUTPUT).elf
+# 1. Генерируем SMDH (иконку), если есть файл icon.png
+$(OUTPUT).smdh: $(TOPDIR)/gfx/icon.png
+	@echo "Creating SMDH icon..."
+	@smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing on the Coast" "markos456" $< $@
+
+# 2. Собираем .3dsx вместе с иконкой
+$(OUTPUT).3dsx: $(OUTPUT).elf $(OUTPUT).smdh
+	@echo "Linking $(notdir $@)..."
+	@3dsxtool $< $@ --romfs=$(CURDIR)/$(BUILD) --smdh=$(OUTPUT).smdh
+
 $(OUTPUT).elf: $(OFILES)
 
 main.o: vshader_shbin.h
@@ -103,11 +109,12 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X (Убрали mkdir и mv, файл создается сразу в build)
+# Конвертация PNG в T3X (игнорируем icon.png, так как он идет в SMDH)
 %.t3x.o %_t3x.h : %.png
-	@echo "Converting image: $(notdir $<)"
-	@tex3ds -f rgba8 $< -o $(notdir $*).t3x
-	@touch $@
+	@if [ "$(notdir $<)" = "icon.png" ]; then touch $@; else \
+	echo "Converting image: $(notdir $<)"; \
+	tex3ds -f rgba8 $< -o $(notdir $*).t3x; \
+	touch $@; fi
 
 -include $(DEPENDS)
 
