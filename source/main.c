@@ -273,8 +273,7 @@ int main(void)
     C3D_BufInfo_Add(&bufferInfo, cubeVerts, sizeof(Vertex), 1, 0x0);
 
     C3D_AttrInfo_Init(&attributeInfo);
-    C3D_AttrInfo_AddLoader(&attributeInfo, 0, GPU_FLOAT, 3);
-
+    AttrInfo_AddLoader(&attributeInfo, 0, GPU_FLOAT, 3);
     C3D_SetBufInfo(&bufferInfo);
     C3D_SetAttrInfo(&attributeInfo);
 
