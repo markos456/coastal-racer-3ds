@@ -43,7 +43,10 @@ export DEPSDIR := $(CURDIR)/$(BUILD)
 CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-PNGFILES := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
+
+# Находим все PNG, но ИСКЛЮЧАЕМ icon.png из процесса конвертации для игры
+ALL_PNGS := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
+PNGFILES := $(filter-out icon.png, $(ALL_PNGS))
 
 ifeq ($(strip $(CPPFILES)),)
     export LD := $(CC)
@@ -83,7 +86,7 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-# Обходим требование иконки, собираем чистый 3dsx
+# Собираем .3dsx без иконки SMDH (чтобы не спотыкаться на ее размерах)
 $(OUTPUT).3dsx: $(OUTPUT).elf
 	@echo "Linking $(notdir $@)..."
 	@3dsxtool $< $@ --romfs=$(CURDIR)/$(BUILD)
@@ -104,12 +107,11 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X (игнорируем icon.png)
+# Простое правило конвертации без всяких if
 %.t3x.o %_t3x.h : %.png
-	@if [ "$(notdir $<)" = "icon.png" ]; then touch $@; else \
-	echo "Converting image: $(notdir $<)"; \
-	tex3ds -f rgba8 $< -o $(notdir $*).t3x; \
-	touch $@; fi
+	@echo "Converting image: $(notdir $<)"
+	@tex3ds -f rgba8 $< -o $(notdir $*).t3x
+	@touch $@
 
 -include $(DEPENDS)
 
