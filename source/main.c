@@ -19,6 +19,8 @@ static C3D_Mtx projection;
 static C3D_Mtx modelView;
 static int uProjection, uModelView, uColor;
 static C3D_RenderTarget *topTarget, *bottomTarget;
+static C2D_TextBuf textBuf;
+static C2D_Text titleText, driveText, garageText, optionsText, hintText;
 
 static float carX = 0.0f;
 static float roadScroll = 0.0f;
@@ -109,21 +111,58 @@ static void drawCar(void)
     }
 }
 
+static void initMenuText(void)
+{
+    textBuf = C2D_TextBufNew(4096);
+
+    C2D_TextParse(&titleText, textBuf, "COASTAL RACER");
+    C2D_TextParse(&driveText, textBuf, "START RACE");
+    C2D_TextParse(&garageText, textBuf, "GARAGE");
+    C2D_TextParse(&optionsText, textBuf, "OPTIONS");
+    C2D_TextParse(&hintText, textBuf, "D-PAD: MOVE CAR   START: EXIT");
+
+    C2D_TextOptimize(&titleText);
+    C2D_TextOptimize(&driveText);
+    C2D_TextOptimize(&garageText);
+    C2D_TextOptimize(&optionsText);
+    C2D_TextOptimize(&hintText);
+}
+
 static void drawMenu(void)
 {
+    /*
+       C2D_CreateScreenTarget already configures the bottom screen output.
+       Do not override its output settings with the custom top-screen flags.
+    */
     C2D_TargetClear(bottomTarget, C2D_Color32(10, 20, 38, 255));
     C2D_SceneBegin(bottomTarget);
 
-    C2D_DrawRectSolid(12, 15, 0, 296, 38,
-        C2D_Color32(0, 160, 220, 255));
-    C2D_DrawRectSolid(22, 75, 0, 276, 42,
-        C2D_Color32(220, 55, 30, 255));
-    C2D_DrawRectSolid(22, 130, 0, 276, 42,
-        C2D_Color32(30, 110, 65, 255));
-    C2D_DrawRectSolid(22, 185, 0, 276, 25,
-        C2D_Color32(230, 230, 230, 255));
+    /* Header */
+    C2D_DrawRectSolid(0, 0, 0.0f, 320, 56,
+        C2D_Color32(5, 45, 75, 255));
+    C2D_DrawRectSolid(10, 53, 0.0f, 300, 3,
+        C2D_Color32(0, 205, 255, 255));
 
-    // Make sure the queued 2D menu is submitted before ending the frame.
+    /* Menu buttons */
+    C2D_DrawRectSolid(18, 72, 0.0f, 284, 42,
+        C2D_Color32(0, 145, 210, 255));
+    C2D_DrawRectSolid(18, 124, 0.0f, 284, 42,
+        C2D_Color32(205, 55, 38, 255));
+    C2D_DrawRectSolid(18, 176, 0.0f, 284, 42,
+        C2D_Color32(30, 125, 75, 255));
+
+    /* Labels */
+    C2D_DrawText(&titleText, C2D_WithColor, 66, 18, 0.5f,
+        0.65f, 0.65f, C2D_Color32(255, 255, 255, 255));
+    C2D_DrawText(&driveText, C2D_WithColor, 105, 85, 0.5f,
+        0.55f, 0.55f, C2D_Color32(255, 255, 255, 255));
+    C2D_DrawText(&garageText, C2D_WithColor, 125, 137, 0.5f,
+        0.55f, 0.55f, C2D_Color32(255, 255, 255, 255));
+    C2D_DrawText(&optionsText, C2D_WithColor, 120, 189, 0.5f,
+        0.55f, 0.55f, C2D_Color32(255, 255, 255, 255));
+    C2D_DrawText(&hintText, C2D_WithColor, 17, 229, 0.5f,
+        0.36f, 0.36f, C2D_Color32(180, 205, 220, 255));
+
     C2D_Flush();
 }
 
@@ -136,11 +175,16 @@ int main(void)
         return 1;
     }
 
-    C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
+    if (!C2D_Init(C2D_DEFAULT_MAX_OBJECTS)) {
+        C3D_Fini();
+        gfxExit();
+        return 1;
+    }
     C2D_Prepare();
 
     topTarget = C3D_RenderTargetCreate(
         240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+    /* Use Citro2D's screen target for the lower screen. */
     bottomTarget = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
     if (!topTarget || !bottomTarget) {
@@ -153,10 +197,6 @@ int main(void)
 
     C3D_RenderTargetSetOutput(
         topTarget, GFX_TOP, GFX_LEFT, TRANSFER_FLAGS);
-
-    // Explicitly configure the bottom screen output as well.
-    C3D_RenderTargetSetOutput(
-        bottomTarget, GFX_BOTTOM, GFX_LEFT, TRANSFER_FLAGS);
 
     shaderDvlb = DVLB_ParseFile((u32 *)vshader_shbin, vshader_shbin_size);
     if (!shaderDvlb) {
@@ -194,6 +234,8 @@ int main(void)
     C3D_CullFace(GPU_CULL_NONE);
     C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
 
+    initMenuText();
+
     while (aptMainLoop()) {
         hidScanInput();
         u32 down = hidKeysDown();
@@ -219,19 +261,20 @@ int main(void)
         drawRoad();
         drawCar();
 
-        // Draw the bottom screen in the same frame, after the 3D scene.
+        /* Switch to the bottom screen and draw the 2D menu. */
         drawMenu();
 
         C3D_FrameEnd(0);
     }
 
+    C2D_TextBufDelete(textBuf);
     shaderProgramFree(&shaderProgram);
     DVLB_Free(shaderDvlb);
     C3D_RenderTargetDelete(topTarget);
+    /* bottomTarget is managed as a Citro2D screen target. */
 
     C2D_Fini();
     C3D_Fini();
     gfxExit();
     return 0;
 }
-
