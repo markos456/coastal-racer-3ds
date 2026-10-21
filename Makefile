@@ -103,12 +103,10 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X (ИСПРАВЛЕНО: убран флаг -i)
+# Конвертация PNG в T3X (Убрали mkdir и mv, файл создается сразу в build)
 %.t3x.o %_t3x.h : %.png
 	@echo "Converting image: $(notdir $<)"
 	@tex3ds -f rgba8 $< -o $(notdir $*).t3x
-	@mkdir -p $(TOPDIR)/build
-	@mv $(notdir $*).t3x $(TOPDIR)/build/
 	@touch $@
 
 -include $(DEPENDS)
