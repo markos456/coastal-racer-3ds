@@ -24,7 +24,7 @@ static const vertex cubeVerts[36] = {
 
 static DVLB_s* vshader_dvlb;
 static shaderProgram_s program;
-static int uLoc_projection, uLoc_modelView;
+static int uLoc_projection, uLoc_modelView, uLoc_color; // ДОБАВИЛИ uLoc_color
 static C3D_Mtx projection;
 static C3D_RenderTarget* topTarget;
 static C3D_RenderTarget* bottomTarget;
@@ -99,6 +99,7 @@ int main(void) {
 
     uLoc_projection = shaderInstanceGetUniformLocation(program.vertexShader, "projection");
     uLoc_modelView  = shaderInstanceGetUniformLocation(program.vertexShader, "modelView");
+    uLoc_color      = shaderInstanceGetUniformLocation(program.vertexShader, "uColor"); // ПОЛУЧАЕМ ЛОКАЦИЮ ЦВЕТА
 
     vbo_data = linearAlloc(sizeof(cubeVerts));
     memcpy(vbo_data, cubeVerts, sizeof(cubeVerts));
@@ -110,7 +111,9 @@ int main(void) {
     AttrInfo_Init(attrInfo);
     AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);
 
-    Mtx_PerspTilt(&projection, C3D_Rad(50.0f), 400.0f / 240.0f, 0.1f, 100.0f);
+    // ИСПРАВЛЕНО: заменили C3D_Rad на математику и добавили 6-й аргумент (false)
+    float fov = 50.0f * (3.14159265f / 180.0f);
+    Mtx_PerspTilt(&projection, fov, 400.0f / 240.0f, 0.1f, 100.0f, false);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
 
     C3D_CullFace(GPU_CULL_NONE);
