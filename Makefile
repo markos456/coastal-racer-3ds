@@ -8,39 +8,25 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-#---------------------------------------------------------------------------------
 TARGET		:=	coastal-racer-3ds
 BUILD		:=	build
 SOURCES		:=	source
 INCLUDES	:=	source
 
-#---------------------------------------------------------------------------------
 ARCH		:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-
-CFLAGS		:=	-g -Wall -O2 -mword-relocations \
-				-ffunction-sections -fdata-sections $(ARCH)
-
-CFLAGS		+=	$(INCLUDE) -D__3DS__
-
-CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
-
+CFLAGS		:=	-g -Wall -O2 -mword-relocations -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE) -D__3DS__
+CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 ASFLAGS		:=	$(ARCH)
 LDFLAGS		=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
-
 LIBS		:=	-lcitro2d -lcitro3d -lctru -lm
-
 LIBDIRS		:=	$(CTRULIB)
 
-#---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
-
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 export TOPDIR	:=	$(CURDIR)
-
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
-
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
@@ -57,18 +43,15 @@ endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
 export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(PICAFILES:.v.pica=.v.pica.o)
-export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
+export OFILES		:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 					-I$(CURDIR)/$(BUILD)
-
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 .PHONY: $(BUILD) clean all
-
-#---------------------------------------------------------------------------------
 all: $(BUILD)
 
 $(BUILD):
@@ -82,19 +65,13 @@ clean:
 #---------------------------------------------------------------------------------
 else
 .PHONY:	all
-
 DEPENDS	:=	$(OFILES:.o=.d)
 
-#---------------------------------------------------------------------------------
-# main targets
-#---------------------------------------------------------------------------------
 all	:	$(OUTPUT).3dsx
-
 $(OUTPUT).3dsx	:	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
-# ВОТ ОНА, ВОЛШЕБНАЯ СТРОЧКА:
-# Она говорит сборщику: "Файл main.o зависит от vshader_shbin.h"
+# Явная зависимость main.o от заголовка шейдера
 main.o: vshader_shbin.h
 
 #---------------------------------------------------------------------------------
@@ -104,7 +81,7 @@ main.o: vshader_shbin.h
 	@$(bin2o)
 
 #---------------------------------------------------------------------------------
-# Правило для шейдеров .v.pica
+# Правило для сборки шейдера PICA200
 #---------------------------------------------------------------------------------
 %.v.pica.o	%_shbin.h :	%.v.pica
 	@echo $(notdir $<)
@@ -113,7 +90,6 @@ main.o: vshader_shbin.h
 	@rm $(notdir $<).shbin
 
 -include $(DEPENDS)
-
 #---------------------------------------------------------------------------------------
 endif
 #---------------------------------------------------------------------------------------
