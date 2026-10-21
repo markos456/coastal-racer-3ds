@@ -21,7 +21,6 @@ INCLUDES	:=	source
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-# ВОТ ЭТА СТРОКА ИСПРАВЛЯЕТ ОШИБКУ С 3dsx_crt0.o
 ARCH		:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
 CFLAGS		:=	-g -Wall -O2 -mword-relocations \
@@ -38,9 +37,6 @@ LIBS		:=	-lcitro2d -lcitro3d -lctru -lm
 #---------------------------------------------------------------------------------
 LIBDIRS		:=	$(CTRULIB)
 
-#---------------------------------------------------------------------------------
-# no real need to edit anything past this point unless you need to add additional
-# rules for different file extensions
 #---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
@@ -69,7 +65,8 @@ else
 endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
-export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+# ВОТ ЗДЕСЬ МЫ ДОБАВИЛИ PICAFILES В СПИСОК СБОРКИ
+export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(PICAFILES:.v.pica=.v.pica.o)
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
@@ -108,7 +105,10 @@ $(OUTPUT).3dsx	:	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
 #---------------------------------------------------------------------------------
-# you need a rule like this for each extension you use as binary data
+# Заставляем main.o ждать, пока сгенерируется заголовок шейдера
+#---------------------------------------------------------------------------------
+main.o: vshader_v_pica_shbin.h
+
 #---------------------------------------------------------------------------------
 %.bin.o	%_bin.h :	%.bin
 #---------------------------------------------------------------------------------
@@ -116,11 +116,11 @@ $(OUTPUT).elf	:	$(OFILES)
 	@$(bin2o)
 
 #---------------------------------------------------------------------------------
-%.v.pica.o	%_v_pica.h :	%.v.pica
+%.v.pica.o	%_shbin.h :	%.v.pica
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@picasso -o $(notdir $<).shbin $<
-	@bin2s -a 4 $(notdir $<).shbin | bin2s -a 4 -H $(notdir $<)_shbin.h -o $@
+	@bin2s -a 4 $(notdir $<).shbin | bin2s -a 4 -H $(subst .,_,$(notdir $<))_shbin.h -o $@
 	@rm $(notdir $<).shbin
 
 -include $(DEPENDS)
