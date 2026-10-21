@@ -39,7 +39,6 @@ static C3D_RenderTarget *bottomTarget;
 static DVLB_s *shaderDvlb;
 static shaderProgram_s shaderProgram;
 
-static C3D_Mtx projection;
 static C3D_Mtx viewMatrix;
 static C3D_Mtx modelMatrix;
 static C3D_Mtx combinedMatrix;
