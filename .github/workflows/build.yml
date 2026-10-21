@@ -7,21 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: devkitpro/devkitarm:latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install 3DS libraries
-        run: |
-          # Устанавливаем пакеты для сборки под 3DS
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            devkitpro-pacman
-          sudo dkp-pacman -Syu --noconfirm
-          sudo dkp-pacman -S --noconfirm 3ds-dev
-
       - name: Build
         run: |
-          # Обязательно чистим перед сборкой, чтобы избежать старых артефактов
           make clean
           make
