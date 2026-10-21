@@ -44,7 +44,6 @@ CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 
-# Находим все PNG, но ИСКЛЮЧАЕМ icon.png (если он вдруг есть)
 ALL_PNGS := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
 PNGFILES := $(filter-out icon.png, $(ALL_PNGS))
 
@@ -86,20 +85,20 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-# Генерируем заглушку иконки 48x48 прямо в коде, чтобы сборщик не ругался
+# Генерируем SMDH. Если нет icon.png, используем top.png (smdhtool сам его обрежет)
 $(OUTPUT).smdh:
-	@echo "Creating SMDH icon automatically..."
+	@echo "Creating SMDH icon..."
 	@if [ -f $(TOPDIR)/gfx/icon.png ]; then \
 		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" $(TOPDIR)/gfx/icon.png $@; \
 	else \
-		echo "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAgSURBVGhD7dExAQAADAIwkNp/1IbgH4WBYwEAAAAAAAAAAM8BQAAAAAF8avjRAAAAAElFTkSuQmCC" | base64 -d > icon_dummy.png; \
-		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" icon_dummy.png $@; \
-		rm -f icon_dummy.png; \
+		echo "Using top.png as icon fallback..."; \
+		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" $(TOPDIR)/gfx/top.png $@; \
 	fi
 
+# ИСПРАВЛЕНО: убрали лишний /$(BUILD), так как мы уже находимся в папке build
 $(OUTPUT).3dsx: $(OUTPUT).elf $(OUTPUT).smdh
 	@echo "Linking $(notdir $@)..."
-	@3dsxtool $< $@ --romfs=$(CURDIR)/$(BUILD) --smdh=$(OUTPUT).smdh
+	@3dsxtool $< $@ --romfs=$(CURDIR) --smdh=$(OUTPUT).smdh
 
 $(OUTPUT).elf: $(OFILES)
 
