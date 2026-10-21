@@ -9,17 +9,11 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
 #---------------------------------------------------------------------------------
-# TARGET is the name of the output
-# BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
-#---------------------------------------------------------------------------------
 TARGET		:=	coastal-racer-3ds
 BUILD		:=	build
 SOURCES		:=	source
 INCLUDES	:=	source
 
-#---------------------------------------------------------------------------------
-# options for code generation
 #---------------------------------------------------------------------------------
 ARCH		:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
@@ -31,10 +25,6 @@ ASFLAGS		:=	$(CFLAGS)
 LDFLAGS		=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS		:=	-lcitro2d -lcitro3d -lctru -lm
-
-#---------------------------------------------------------------------------------
-# list of directories containing libraries
-#---------------------------------------------------------------------------------
 LIBDIRS		:=	$(CTRULIB)
 
 #---------------------------------------------------------------------------------
@@ -52,12 +42,9 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.pica)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
-#---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C
-#---------------------------------------------------------------------------------
 ifeq ($(strip $(CPPFILES)),)
 	export LD	:=	$(CC)
 else
@@ -65,8 +52,7 @@ else
 endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
-# ВОТ ЗДЕСЬ МЫ ДОБАВИЛИ PICAFILES В СПИСОК СБОРКИ
-export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(PICAFILES:.v.pica=.v.pica.o)
+export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(PICAFILES:.pica=.pica.o)
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
@@ -78,14 +64,12 @@ export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 .PHONY: $(BUILD) clean all
 
-#---------------------------------------------------------------------------------
 all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-#---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
 	@rm -fr $(BUILD) $(TARGET).3dsx $(OUTPUT).smdh $(TARGET).elf
@@ -96,31 +80,26 @@ else
 
 DEPENDS	:=	$(OFILES:.o=.d)
 
-#---------------------------------------------------------------------------------
-# main targets
-#---------------------------------------------------------------------------------
 all	:	$(OUTPUT).3dsx
 
 $(OUTPUT).3dsx	:	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
-#---------------------------------------------------------------------------------
-# Заставляем main.o ждать, пока сгенерируется заголовок шейдера
-#---------------------------------------------------------------------------------
-main.o: vshader_v_pica_shbin.h
+# Заставляем main.o ждать генерации заголовка
+main.o: shader_shbin.h
 
 #---------------------------------------------------------------------------------
 %.bin.o	%_bin.h :	%.bin
-#---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@$(bin2o)
 
 #---------------------------------------------------------------------------------
-%.v.pica.o	%_shbin.h :	%.v.pica
+# Исправленное правило для шейдера .pica
 #---------------------------------------------------------------------------------
+%.pica.o %_shbin.h :	%.pica
 	@echo $(notdir $<)
 	@picasso -o $(notdir $<).shbin $<
-	@bin2s -a 4 $(notdir $<).shbin | bin2s -a 4 -H $(subst .,_,$(notdir $<))_shbin.h -o $@
+	@bin2s -a 4 $(notdir $<).shbin | bin2s -a 4 -H $(notdir $*)_shbin.h -o $@
 	@rm $(notdir $<).shbin
 
 -include $(DEPENDS)
