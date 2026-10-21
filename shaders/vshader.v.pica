@@ -1,36 +1,29 @@
+; Coastal Racer 3DS — vertex shader (PICA200)
+.uniform invec4 projection[4]
+.uniform invec4 modelView[4]
+.uniform invec4 uColor
 
-; Coastal Racer 3DS - basic PICA200 vertex shader
+.in invec4 position
+.out vec4 outColor
 
-.fvec projection[4], modelView[4]
+.constf invec4 vscale = { 1.0, -1.0, 0.5, 0.0 }
+.constf invec4 vtrans = { 0.0,  0.0, 0.5, 0.0 }
 
-.constf myconst(0.0, 1.0, 0.0, 0.0)
-.alias ones myconst.yyyy
+.code
+    dp4 r0.x, position, modelView[0]
+    dp4 r0.y, position, modelView[1]
+    dp4 r0.z, position, modelView[2]
+    dp4 r0.w, position, modelView[3]
 
-.out outpos position
-.out outclr color
+    dp4 r1.x, r0, projection[0]
+    dp4 r1.y, r0, projection[1]
+    dp4 r1.z, r0, projection[2]
+    dp4 r1.w, r0, projection[3]
 
-.in inpos v0
-.in inclr v1
+    mul r1.xy, r1.xy, vscale.xy
+    mul r1.z,  r1.z,  vscale.z
+    add r1.z,  r1.z,  vtrans.z
 
-.proc main
-    ; Position with homogeneous coordinate
-    mov r0.xyz, inpos
-    mov r0.w, ones
-
-    ; Transform vertex by model-view matrix
-    dp4 r1.x, modelView[0], r0
-    dp4 r1.y, modelView[1], r0
-    dp4 r1.z, modelView[2], r0
-    dp4 r1.w, modelView[3], r0
-
-    ; Transform into clip space
-    dp4 outpos.x, projection[0], r1
-    dp4 outpos.y, projection[1], r1
-    dp4 outpos.z, projection[2], r1
-    dp4 outpos.w, projection[3], r1
-
-    ; Pass vertex color to fragment stage
-    mov outclr, inclr
-
+    mov outpos, r1
+    mov outColor, uColor
     end
-.end
