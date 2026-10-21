@@ -35,13 +35,11 @@ LIBDIRS     := $(CTRULIB)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
-# Корневая папка проекта
 export TOPDIR  := $(CURDIR)
 export OUTPUT  := $(CURDIR)/$(TARGET)
 export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
-# Исходники
 CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
@@ -52,13 +50,11 @@ else
     export LD := $(CXX)
 endif
 
-# Объектные файлы
 export OFILES := $(CPPFILES:.cpp=.o) \
                  $(CFILES:.c=.o) \
                  $(SFILES:.s=.o) \
                  vshader.v.pica.o
 
-# Пути поиска заголовков
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include)
 
@@ -88,12 +84,8 @@ $(OUTPUT).3dsx: $(OUTPUT).elf
 
 $(OUTPUT).elf: $(OFILES)
 
-# Сначала создаём шейдер и заголовок,
-# затем компилируем main.c
 main.o: vshader_shbin.h
 
-# Корректный абсолютный путь к исходному шейдеру.
-# Рецепт создаёт и объектный файл, и заголовок.
 vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 	@echo "Compiling PICA200 vertex shader..."
 	@picasso -o vshader.shbin $<
@@ -104,10 +96,10 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 	@echo "extern const u32 vshader_shbin_size;" >> vshader_shbin.h
 	@rm -f vshader.shbin vshader.s
 
-# Заголовок создаётся рецептом выше
 vshader_shbin.h: vshader.v.pica.o
 
 -include $(DEPENDS)
 
 endif
+
 
