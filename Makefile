@@ -1,4 +1,3 @@
-
 # Coastal Racer 3DS
 # devkitPro / devkitARM / libctru / Citro3D / Citro2D
 
@@ -9,14 +8,14 @@ $(error DEVKITARM is not set. Use the devkitPro devkitARM environment.)
 endif
 
 TOPDIR ?= $(CURDIR)
-
 include $(DEVKITARM)/3ds_rules
 
 TARGET      := coastal-racer-3ds
 BUILD       := build
 SOURCES     := source
 INCLUDES    := source build
-DATA        := assets
+DATA        :=
+GRAPHICS    := gfx
 
 ARCH        := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
@@ -37,12 +36,14 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 
 export TOPDIR  := $(CURDIR)
 export OUTPUT  := $(CURDIR)/$(TARGET)
-export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+                  $(foreach dir,$(GRAPHICS),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
 CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+PNGFILES := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
 
 ifeq ($(strip $(CPPFILES)),)
     export LD := $(CC)
@@ -53,12 +54,17 @@ endif
 export OFILES := $(CPPFILES:.cpp=.o) \
                  $(CFILES:.c=.o) \
                  $(SFILES:.s=.o) \
-                 vshader.v.pica.o
+                 vshader.v.pica.o \
+                 $(PNGFILES:.png=.t3x.o)
 
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-                  $(foreach dir,$(LIBDIRS),-I$(dir)/include)
+                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                  -I$(CURDIR)/$(BUILD)
 
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+# Включаем romfs для картинок
+export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)
 
 .PHONY: all clean
 
@@ -81,7 +87,6 @@ DEPENDS := $(OFILES:.o=.d)
 all: $(OUTPUT).3dsx
 
 $(OUTPUT).3dsx: $(OUTPUT).elf
-
 $(OUTPUT).elf: $(OFILES)
 
 main.o: vshader_shbin.h
@@ -98,8 +103,14 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
+# Конвертация PNG в T3X (С ФЛАГОМ -f rgba8 ДЛЯ ЦВЕТА!)
+%.t3x.o %_t3x.h : %.png
+	@echo "Converting image: $(notdir $<)"
+	@tex3ds -f rgba8 -i $< -o $(notdir $*).t3x
+	@mkdir -p $(TOPDIR)/build
+	@mv $(notdir $*).t3x $(TOPDIR)/build/
+	@touch $@
+
 -include $(DEPENDS)
 
 endif
-
-
