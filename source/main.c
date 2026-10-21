@@ -267,18 +267,16 @@ int main(void)
         shaderProgramGetVertexShader(&shaderProgram), "modelView");
 
     C3D_BufInfo bufferInfo;
-    C3D_AttrInfo attributeInfo;
+C3D_AttrInfo attributeInfo;
 
-    C3D_BufInfo_Init(&bufferInfo);
-    C3D_BufInfo_Add(&bufferInfo, cubeVerts, sizeof(Vertex), 1, 0x0);
+BufInfo_Init(&bufferInfo);
+BufInfo_Add(&bufferInfo, cubeVerts, sizeof(Vertex), 1, 0x0);
 
-    C3D_AttrInfo_Init(&attributeInfo);
-    AttrInfo_AddLoader(&attributeInfo, 0, GPU_FLOAT, 3);
-    C3D_SetBufInfo(&bufferInfo);
-    C3D_SetAttrInfo(&attributeInfo);
+AttrInfo_Init(&attributeInfo);
+AttrInfo_AddLoader(&attributeInfo, 0, GPU_FLOAT, 3);
 
-    C3D_CullFace(GPU_CULL_NONE);
-    C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
+C3D_SetBufInfo(&bufferInfo);
+C3D_SetAttrInfo(&attributeInfo);
 
     font = C2D_FontLoadSystem(CFG_REGION_USA);
     textBuffer = C2D_TextBufNew(4096);
