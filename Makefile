@@ -103,10 +103,10 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X (С ФЛАГОМ -f rgba8 ДЛЯ ЦВЕТА!)
+# Конвертация PNG в T3X (ИСПРАВЛЕНО: убран флаг -i)
 %.t3x.o %_t3x.h : %.png
 	@echo "Converting image: $(notdir $<)"
-	@tex3ds -f rgba8 -i $< -o $(notdir $*).t3x
+	@tex3ds -f rgba8 $< -o $(notdir $*).t3x
 	@mkdir -p $(TOPDIR)/build
 	@mv $(notdir $*).t3x $(TOPDIR)/build/
 	@touch $@
