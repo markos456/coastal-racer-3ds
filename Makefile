@@ -9,19 +9,11 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
 #---------------------------------------------------------------------------------
-# TARGET is the name of the output
-# BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
-# DATA is a list of directories containing data files
-# INCLUDES is a list of directories containing header files
-#---------------------------------------------------------------------------------
 TARGET		:=	coastal-racer-3ds
 BUILD		:=	build
 SOURCES		:=	source
 INCLUDES	:=	source
 
-#---------------------------------------------------------------------------------
-# options for code generation
 #---------------------------------------------------------------------------------
 ARCH		:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
@@ -37,15 +29,8 @@ LDFLAGS		=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS		:=	-lcitro2d -lcitro3d -lctru -lm
 
-#---------------------------------------------------------------------------------
-# list of directories containing libraries, this must be the top level containing
-# include and lib
-#---------------------------------------------------------------------------------
 LIBDIRS		:=	$(CTRULIB)
 
-#---------------------------------------------------------------------------------
-# no real need to edit anything past this point unless you need to add additional
-# rules for different file extensions
 #---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
@@ -64,9 +49,6 @@ SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
-#---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C
-#---------------------------------------------------------------------------------
 ifeq ($(strip $(CPPFILES)),)
 	export LD	:=	$(CC)
 else
@@ -93,7 +75,6 @@ $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-#---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
 	@rm -fr $(BUILD) $(TARGET).3dsx $(OUTPUT).smdh $(TARGET).elf
@@ -112,8 +93,10 @@ all	:	$(OUTPUT).3dsx
 $(OUTPUT).3dsx	:	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
-#---------------------------------------------------------------------------------
-# you need a rule like this for each extension you use as binary data
+# ВОТ ОНА, ВОЛШЕБНАЯ СТРОЧКА:
+# Она говорит сборщику: "Файл main.o зависит от vshader_shbin.h"
+main.o: vshader_shbin.h
+
 #---------------------------------------------------------------------------------
 %.bin.o	%_bin.h :	%.bin
 #---------------------------------------------------------------------------------
@@ -121,8 +104,9 @@ $(OUTPUT).elf	:	$(OFILES)
 	@$(bin2o)
 
 #---------------------------------------------------------------------------------
-%.v.pica.o	%_shbin.h :	%.v.pica
+# Правило для шейдеров .v.pica
 #---------------------------------------------------------------------------------
+%.v.pica.o	%_shbin.h :	%.v.pica
 	@echo $(notdir $<)
 	@picasso -o $(notdir $<).shbin $<
 	@bin2s -a 4 $(notdir $<).shbin | bin2s -a 4 -H $(notdir $*)_shbin.h -o $@
