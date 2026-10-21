@@ -1,41 +1,31 @@
 ; Example PICA200 vertex shader
-; Uniforms
 .fvec projection[4]
 .fvec modelView[4]
+.fvec uColor
 
-; Constants
 .constf myconst(0.0, 1.0, -1.0, 0.5)
 .alias zeros myconst.xxxx
 .alias ones myconst.yyyy
 
-; Outputs
 .out outpos position
 .out outcolor color
 
-; Inputs (defined as aliases for convenience)
 .alias inpos v0
-.alias incolor v1
 
 .proc main
-    ; Force the w component of inpos to be 1.0
     mov r0.xyz, inpos
     mov r0.w, ones
 
-    ; Transform position by modelView
     dp4 r1.x, modelView[0], r0
     dp4 r1.y, modelView[1], r0
     dp4 r1.z, modelView[2], r0
     dp4 r1.w, modelView[3], r0
 
-    ; Transform position by projection
     dp4 outpos.x, projection[0], r1
     dp4 outpos.y, projection[1], r1
     dp4 outpos.z, projection[2], r1
     dp4 outpos.w, projection[3], r1
 
-    ; Pass color through
-    mov outcolor, incolor
-
-    ; We're finished
+    mov outcolor, uColor
     end
 .end
