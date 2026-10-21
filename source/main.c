@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 // Shader (генерируется из vshader.v.pica через picasso + bin2s)
-#include "vshader_v_pica_shbin.h"
+#include "shader_shbin.h"
 
 // ---- Unit cube (36 vertices, centered at origin) ----
 typedef struct { float x, y, z; } vertex;
