@@ -83,15 +83,10 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-# 1. Генерируем SMDH (иконку), если есть файл icon.png
-$(OUTPUT).smdh: $(TOPDIR)/gfx/icon.png
-	@echo "Creating SMDH icon..."
-	@smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing on the Coast" "markos456" $< $@
-
-# 2. Собираем .3dsx вместе с иконкой
-$(OUTPUT).3dsx: $(OUTPUT).elf $(OUTPUT).smdh
+# Обходим требование иконки, собираем чистый 3dsx
+$(OUTPUT).3dsx: $(OUTPUT).elf
 	@echo "Linking $(notdir $@)..."
-	@3dsxtool $< $@ --romfs=$(CURDIR)/$(BUILD) --smdh=$(OUTPUT).smdh
+	@3dsxtool $< $@ --romfs=$(CURDIR)/$(BUILD)
 
 $(OUTPUT).elf: $(OFILES)
 
@@ -109,7 +104,7 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X (игнорируем icon.png, так как он идет в SMDH)
+# Конвертация PNG в T3X (игнорируем icon.png)
 %.t3x.o %_t3x.h : %.png
 	@if [ "$(notdir $<)" = "icon.png" ]; then touch $@; else \
 	echo "Converting image: $(notdir $<)"; \
