@@ -165,9 +165,9 @@ int main(void) {
     if (spriteSheetTop) {
         C2D_SpriteFromSheet(&spriteTop, spriteSheetTop, 0);
         C2D_SpriteSetPos(&spriteTop, 0, 0);
-        // Масштабируем верхнюю картинку ровно в 400x240
-        float scaleX = 400.0f / C2D_SpriteGetWidth(&spriteTop);
-        float scaleY = 240.0f / C2D_SpriteGetHeight(&spriteTop);
+        // ИСПРАВЛЕНО: получаем ширину и высоту напрямую из текстуры
+        float scaleX = 400.0f / spriteTop.image.subtex->width;
+        float scaleY = 240.0f / spriteTop.image.subtex->height;
         C2D_SpriteSetScale(&spriteTop, scaleX, scaleY);
     }
     
@@ -175,9 +175,9 @@ int main(void) {
     if (spriteSheetBottom) {
         C2D_SpriteFromSheet(&spriteBottom, spriteSheetBottom, 0);
         C2D_SpriteSetPos(&spriteBottom, 0, 0);
-        // Масштабируем нижнюю картинку ровно в 320x240
-        float scaleX = 320.0f / C2D_SpriteGetWidth(&spriteBottom);
-        float scaleY = 240.0f / C2D_SpriteGetHeight(&spriteBottom);
+        // ИСПРАВЛЕНО: получаем ширину и высоту напрямую из текстуры
+        float scaleX = 320.0f / spriteBottom.image.subtex->width;
+        float scaleY = 240.0f / spriteBottom.image.subtex->height;
         C2D_SpriteSetScale(&spriteBottom, scaleX, scaleY);
     }
 
