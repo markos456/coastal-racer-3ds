@@ -85,14 +85,16 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-# Генерируем SMDH. Если нет icon.png, используем top.png (smdhtool сам его обрежет)
+# Генерируем заглушку иконки 48x48, если icon.png отсутствует
 $(OUTPUT).smdh:
 	@echo "Creating SMDH icon..."
 	@if [ -f $(TOPDIR)/gfx/icon.png ]; then \
 		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" $(TOPDIR)/gfx/icon.png $@; \
 	else \
-		echo "Using top.png as icon fallback..."; \
-		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" $(TOPDIR)/gfx/top.png $@; \
+		echo "icon.png not found. Generating fallback 48x48 icon..."; \
+		python3 -c "import base64; open('icon_dummy.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsSAAALEgHS3X78AAAAMElEQVRo3u3NMQEAAAgDoC251a3gLwqgOXf3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgaW1wAAWQm8T8AAAAASUVORK5CYII='))"; \
+		smdhtool --create "Coastal Racer 3DS" "Retro 3D Racing" "markos456" icon_dummy.png $@; \
+		rm -f icon_dummy.png; \
 	fi
 
 # ИСПРАВЛЕНО: убрали лишний /$(BUILD), так как мы уже находимся в папке build
