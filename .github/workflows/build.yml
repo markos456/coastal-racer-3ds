@@ -1,42 +1,27 @@
-name: Coastal Racer 3DS
+name: Build Coastal Racer 3DS
 
-on:
-  push:
-    branches: [main, master]
-  pull_request:
-  workflow_dispatch:
+on: [push, pull_request]
 
 jobs:
   build:
-    name: Build Coastal Racer 3DS
     runs-on: ubuntu-latest
-    container: devkitpro/devkitarm:latest
-
+    container:
+      image: devkitpro/devkitarm:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install citro3d and 3DS libraries
+      - name: Install 3DS libraries
         run: |
-          if [ -f "$DEVKITPRO/libctru/lib/libcitro3d.a" ]; then
-            echo "citro3d already installed"
-          else
-            for i in 1 2 3 4 5; do
-              dkp-pacman -Sy --noconfirm 3ds-dev && break
-              echo "Attempt $i failed, retrying..."
-              sleep 15
-            done
-          fi
+          # Устанавливаем пакеты для сборки под 3DS
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            devkitpro-pacman
+          sudo dkp-pacman -Syu --noconfirm
+          sudo dkp-pacman -S --noconfirm 3ds-dev
 
       - name: Build
-        run: make
-
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Coastal-Racer-3DS
-          path: |
-            *.3dsx
-            *.smdh
-            *.elf
-          if-no-files-found: error
+        run: |
+          # Обязательно чистим перед сборкой, чтобы избежать старых артефактов
+          make clean
+          make
