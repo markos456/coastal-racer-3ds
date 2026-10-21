@@ -7,20 +7,21 @@ jobs:
   build:
     name: Build Coastal Racer 3DS
     runs-on: ubuntu-latest
+
     container:
       image: devkitpro/devkitarm:latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build
+      - name: Build game
         run: |
           make clean
           make
           ls -lh coastal-racer-3ds.3dsx
 
-      - name: Upload 3DSX
+      - name: Upload 3DSX artifact
         uses: actions/upload-artifact@v4
         with:
           name: Coastal-Racer-3DS
