@@ -44,7 +44,6 @@ CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 
-# Ищем все PNG, но исключаем icon.png, если он есть, чтобы он не ломал текстуры игры
 ALL_PNGS := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
 PNGFILES := $(filter-out icon.png, $(ALL_PNGS))
 
@@ -86,7 +85,6 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).3dsx
 
-# Генерация иконки (с фоллбеком на пустую картинку 48x48 через Python)
 $(OUTPUT).smdh:
 	@echo "Creating SMDH icon..."
 	@if [ -f $(TOPDIR)/gfx/icon.png ]; then \
@@ -98,7 +96,6 @@ $(OUTPUT).smdh:
 		rm -f icon_dummy.png; \
 	fi
 
-# Сборка .3dsx с правильным romfs
 $(OUTPUT).3dsx: $(OUTPUT).elf $(OUTPUT).smdh
 	@echo "Linking $(notdir $@)..."
 	@3dsxtool $< $@ --romfs=$(CURDIR) --smdh=$(OUTPUT).smdh
@@ -119,7 +116,6 @@ vshader.v.pica.o: $(TOPDIR)/source/vshader.v.pica
 
 vshader_shbin.h: vshader.v.pica.o
 
-# Конвертация PNG в T3X с флагом --no-compress (чтобы текстуры не были черными)
 %.t3x.o %_t3x.h : %.png
 	@echo "Converting image: $(notdir $<)"
 	@tex3ds -f rgba8 --no-compress $< -o $(notdir $*).t3x
