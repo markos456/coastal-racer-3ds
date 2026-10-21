@@ -1,1 +1,73 @@
+# Coastal Racer 3DS materials
 
+newmtl Body_Red
+Ka 0.2730 0.0063 0.0123
+Kd 0.7800 0.0180 0.0350
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Body_Highlight
+Ka 0.3430 0.0158 0.0192
+Kd 0.9800 0.0450 0.0550
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Glass_Dark
+Ka 0.0087 0.0192 0.0262
+Kd 0.0250 0.0550 0.0750
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Rubber
+Ka 0.0063 0.0070 0.0091
+Kd 0.0180 0.0200 0.0260
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Rim_Silver
+Ka 0.1820 0.1960 0.2170
+Kd 0.5200 0.5600 0.6200
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Rim_Dark
+Ka 0.0350 0.0385 0.0455
+Kd 0.1000 0.1100 0.1300
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Headlight
+Ka 0.3500 0.2870 0.1680
+Kd 1.0000 0.8200 0.4800
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Tail_Light
+Ka 0.3500 0.0087 0.0123
+Kd 1.0000 0.0250 0.0350
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
+
+newmtl Black_Trim
+Ka 0.0087 0.0091 0.0112
+Kd 0.0250 0.0260 0.0320
+Ks 0.25 0.25 0.25
+Ns 28.0
+d 1.0
+illum 2
