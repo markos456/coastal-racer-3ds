@@ -113,27 +113,22 @@ static void drawEnvironment(void)
 {
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Purple sky */
     quad(-80, 15, -40, 80, 15, -40,
           80, 4, -40, -80, 4, -40,
           0.20f, 0.12f, 0.38f);
 
-    /* Pink sky */
     quad(-80, 4, -40, 80, 4, -40,
           80, 2, -40, -80, 2, -40,
           0.48f, 0.18f, 0.42f);
 
-    /* Orange sky */
     quad(-80, 2, -40, 80, 2, -40,
           80, 0, -40, -80, 0, -40,
           0.95f, 0.30f, 0.22f);
 
-    /* Golden horizon */
     quad(-80, 0, -40, 80, 0, -40,
           80, -1.2f, -40, -80, -1.2f, -40,
           1.0f, 0.56f, 0.30f);
 
-    /* Closer sunset sun */
     for (int i = 0; i < 48; i++) {
         float a1 = (float)i * 2.0f * PI / 48.0f;
         float a2 = (float)(i + 1) * 2.0f * PI / 48.0f;
@@ -147,14 +142,12 @@ static void drawEnvironment(void)
             1.0f, 0.72f, 0.32f);
     }
 
-    /* Ocean */
     quad(-100, -1.20f, -40,
           100, -1.20f, -40,
           100, -1.20f, -2.0f,
          -100, -1.20f, -2.0f,
           0.035f, 0.23f, 0.40f);
 
-    /* Water reflections */
     for (int i = 0; i < 12; i++) {
         float z = -25.0f + (float)i * 1.8f;
 
@@ -239,28 +232,24 @@ static void drawFestivalGate(void)
 
     C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    /* Left pillar */
     quad(-3.7f, -1.05f, z,
          -3.25f, -1.05f, z,
          -3.25f, 2.2f, z,
          -3.7f, 2.2f, z,
          0.15f, 0.75f, 1.0f);
 
-    /* Right pillar */
     quad(3.25f, -1.05f, z,
          3.7f, -1.05f, z,
          3.7f, 2.2f, z,
          3.25f, 2.2f, z,
          1.0f, 0.25f, 0.55f);
 
-    /* Top beam */
     quad(-3.7f, 1.75f, z,
           3.7f, 1.75f, z,
           3.7f, 2.2f, z,
          -3.7f, 2.2f, z,
           1.0f, 0.55f, 0.12f);
 
-    /* Festival lights */
     for (int i = 0; i < 7; i++) {
         float x = -2.8f + (float)i * 0.93f;
 
@@ -276,56 +265,168 @@ static void drawFestivalGate(void)
     C3D_ImmDrawEnd();
 }
 
-/* RED PLAYER CAR */
+/* LOW-POLY SPORTS CAR WHEELS */
+static void drawWheel(float cx, float cy, float cz)
+{
+    const int segments = 12;
+    const float radius = 0.22f;
+    const float width = 0.18f;
+
+    float xl = cx + carX - width * 0.5f;
+    float xr = cx + carX + width * 0.5f;
+
+    for (int i = 0; i < segments; i++) {
+        float a1 = 2.0f * PI * (float)i / segments;
+        float a2 = 2.0f * PI * (float)(i + 1) / segments;
+
+        float y1 = cy + cosf(a1) * radius;
+        float z1 = cz + sinf(a1) * radius;
+        float y2 = cy + cosf(a2) * radius;
+        float z2 = cz + sinf(a2) * radius;
+
+        quad(xl, y1, z1,
+             xr, y1, z1,
+             xr, y2, z2,
+             xl, y2, z2,
+             0.025f, 0.025f, 0.032f);
+    }
+
+    for (int side = 0; side < 2; side++) {
+        float x = side ? xr + 0.002f : xl - 0.002f;
+
+        for (int i = 0; i < segments; i++) {
+            float a1 = 2.0f * PI * (float)i / segments;
+            float a2 = 2.0f * PI * (float)(i + 1) / segments;
+
+            triangle(
+                x, cy, cz,
+                x, cy + cosf(a1) * 0.135f,
+                   cz + sinf(a1) * 0.135f,
+                x, cy + cosf(a2) * 0.135f,
+                   cz + sinf(a2) * 0.135f,
+                0.48f, 0.51f, 0.56f);
+
+            triangle(
+                x, cy, cz,
+                x, cy + cosf(a1) * 0.055f,
+                   cz + sinf(a1) * 0.055f,
+                x, cy + cosf(a2) * 0.055f,
+                   cz + sinf(a2) * 0.055f,
+                0.10f, 0.11f, 0.13f);
+        }
+    }
+}
+
+/* RED SPORTS CAR - FRONT POINTS DOWN THE ROAD */
 static void drawCar(void)
 {
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
-
     boxShiftX = carX;
 
-    box(-0.65f, -1.02f, -3.8f,
-         0.65f, -0.72f, -2.2f,
-         0.85f, 0.025f, 0.035f);
+    C3D_ImmDrawBegin(GPU_TRIANGLES);
 
-    box(-0.43f, -0.72f, -3.45f,
-         0.43f, -0.42f, -2.65f,
-         0.12f, 0.22f, 0.30f);
+    /* Main low red body */
+    box(-0.65f, -0.99f, -3.78f,
+         0.65f, -0.75f, -2.25f,
+         0.78f, 0.018f, 0.035f);
 
-    box(-0.34f, -0.42f, -3.30f,
-         0.34f, -0.37f, -2.80f,
-         0.80f, 0.025f, 0.035f);
+    /* Hood */
+    quad(-0.48f, -0.75f, -3.78f,
+          0.48f, -0.75f, -3.78f,
+          0.37f, -0.68f, -3.28f,
+         -0.37f, -0.68f, -3.28f,
+          0.94f, 0.035f, 0.045f);
 
-    box(-0.78f, -1.10f, -3.65f,
-        -0.58f, -0.80f, -3.30f,
-         0.035f, 0.035f, 0.045f);
+    /* Angular dark cabin */
+    quad(-0.38f, -0.72f, -3.30f,
+          0.38f, -0.72f, -3.30f,
+          0.30f, -0.48f, -2.88f,
+         -0.30f, -0.48f, -2.88f,
+          0.035f, 0.055f, 0.075f);
 
-    box(0.58f, -1.10f, -3.65f,
-        0.78f, -0.80f, -3.30f,
-         0.035f, 0.035f, 0.045f);
+    /* Roof */
+    quad(-0.30f, -0.48f, -2.88f,
+          0.30f, -0.48f, -2.88f,
+          0.25f, -0.45f, -2.63f,
+         -0.25f, -0.45f, -2.63f,
+          0.78f, 0.018f, 0.035f);
 
-    box(-0.78f, -1.10f, -2.65f,
-        -0.58f, -0.80f, -2.30f,
-         0.035f, 0.035f, 0.045f);
+    /* Side windows */
+    quad(-0.385f, -0.70f, -3.25f,
+         -0.315f, -0.49f, -2.90f,
+         -0.275f, -0.48f, -2.66f,
+         -0.365f, -0.70f, -2.70f,
+          0.12f, 0.20f, 0.26f);
 
-    box(0.58f, -1.10f, -2.65f,
-        0.78f, -0.80f, -2.30f,
-         0.035f, 0.035f, 0.045f);
+    quad(0.385f, -0.70f, -3.25f,
+         0.315f, -0.49f, -2.90f,
+         0.275f, -0.48f, -2.66f,
+         0.365f, -0.70f, -2.70f,
+          0.12f, 0.20f, 0.26f);
 
-    box(-0.58f, -0.68f, -3.88f,
-         0.58f, -0.61f, -3.78f,
-         0.12f, 0.12f, 0.13f);
+    /* Side skirts */
+    box(-0.67f, -0.99f, -3.48f,
+        -0.61f, -0.91f, -2.48f,
+         0.035f, 0.035f, 0.04f);
 
-    box(-0.50f, -0.90f, -2.23f,
-        -0.22f, -0.82f, -2.19f,
-         1.0f, 0.85f, 0.45f);
+    box(0.61f, -0.99f, -3.48f,
+        0.67f, -0.91f, -2.48f,
+         0.035f, 0.035f, 0.04f);
 
-    box(0.22f, -0.90f, -2.23f,
-         0.50f, -0.82f, -2.19f,
-         1.0f, 0.85f, 0.45f);
+    /* Front splitter */
+    box(-0.60f, -1.015f, -3.91f,
+         0.60f, -0.97f, -3.73f,
+         0.025f, 0.025f, 0.03f);
 
-    boxShiftX = 0.0f;
+    /* Headlights at the front */
+    box(-0.48f, -0.85f, -3.88f,
+        -0.23f, -0.77f, -3.80f,
+         1.0f, 0.88f, 0.55f);
+
+    box(0.23f, -0.85f, -3.88f,
+        0.48f, -0.77f, -3.80f,
+        1.0f, 0.88f, 0.55f);
+
+    /* Front grille */
+    box(-0.20f, -0.94f, -3.90f,
+         0.20f, -0.84f, -3.82f,
+         0.035f, 0.035f, 0.04f);
+
+    /* Rear lights facing the player */
+    box(-0.51f, -0.88f, -2.30f,
+        -0.23f, -0.79f, -2.23f,
+         1.0f, 0.025f, 0.025f);
+
+    box(0.23f, -0.88f, -2.30f,
+         0.51f, -0.79f, -2.23f,
+         1.0f, 0.025f, 0.025f);
+
+    /* Spoiler supports */
+    box(-0.70f, -0.65f, -2.38f,
+        -0.63f, -0.47f, -2.31f,
+         0.06f, 0.06f, 0.07f);
+
+    box(0.63f, -0.65f, -2.38f,
+         0.70f, -0.47f, -2.31f,
+         0.06f, 0.06f, 0.07f);
+
+    /* Wide rear wing */
+    box(-0.78f, -0.47f, -2.43f,
+         0.78f, -0.40f, -2.25f,
+         0.025f, 0.025f, 0.03f);
 
     C3D_ImmDrawEnd();
+
+    /* Wheels have their own drawing batch */
+    C3D_ImmDrawBegin(GPU_TRIANGLES);
+
+    drawWheel(-0.61f, -0.91f, -3.42f);
+    drawWheel( 0.61f, -0.91f, -3.42f);
+    drawWheel(-0.61f, -0.91f, -2.57f);
+    drawWheel( 0.61f, -0.91f, -2.57f);
+
+    C3D_ImmDrawEnd();
+
+    boxShiftX = 0.0f;
 }
 
 static int initScene(void)
