@@ -1,236 +1,374 @@
 #include <3ds.h>
 #include <citro3d.h>
 #include <citro2d.h>
+#include <string.h>
 #include <math.h>
+#include <stdbool.h>
+
 #include "vshader_shbin.h"
 
 #define PI 3.14159265f
+#define CAR_ACCEL 0.025f
+#define CAR_MAX_SPEED 0.8f
 
-#define TRANSFER_FLAGS \
-    (GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | \
-     GX_TRANSFER_RAW_COPY(0) | \
-     GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | \
-     GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
-     GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
+typedef struct {
+    float x, y, z;
+} Vertex;
 
-static DVLB_s *shaderDvlb;
+static const Vertex cubeVerts[36] = {
+    {-0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},
+    {-0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{-0.5f, 0.5f, 0.5f},
+    { 0.5f,-0.5f,-0.5f},{-0.5f,-0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f},{-0.5f,-0.5f, 0.5f},{-0.5f, 0.5f, 0.5f},
+    {-0.5f,-0.5f,-0.5f},{-0.5f, 0.5f, 0.5f},{-0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f},
+    { 0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f, 0.5f},
+    {-0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},
+    {-0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f, 0.5f},
+    {-0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f, 0.5f},{-0.5f,-0.5f, 0.5f}
+};
+
+typedef struct {
+    float x, y, w, h;
+    u32 color;
+} Button;
+
+static Button buttons[] = {
+    { 15, 150, 75, 60, 0x3080FFFF },
+    {105, 150, 75, 60, 0x3080FFFF },
+    {225,  35, 75, 80, 0x30C040FF },
+    {225, 145, 75, 65, 0xC03030FF }
+};
+
+enum {
+    BTN_LEFT,
+    BTN_RIGHT,
+    BTN_GAS,
+    BTN_BRAKE
+};
+
+static DVLB_s* shaderDvlb;
 static shaderProgram_s shaderProgram;
+static C3D_RenderTarget* topTarget;
+static C3D_RenderTarget* bottomTarget;
 static C3D_Mtx projection;
-static C3D_Mtx modelView;
-static int uProjection, uModelView, uColor;
-static C3D_RenderTarget *topTarget, *bottomTarget;
+
+static int locProjection;
+static int locModelView;
+static int locColor;
+
+static void* vertexBuffer = NULL;
 
 static float carX = 0.0f;
-static float roadScroll = 0.0f;
+static float carZ = 0.0f;
+static float carAngle = 0.0f;
+static float carSpeed = 0.0f;
 
-static void setColor(float r, float g, float b)
-{
-    C3D_FVUnifSet(GPU_VERTEX_SHADER, uColor, r, g, b, 1.0f);
+static void drawBox(
+    const C3D_Mtx* view,
+    float x, float y, float z,
+    float sx, float sy, float sz,
+    u32 color
+) {
+    C3D_Mtx modelView;
+    Mtx_Copy(&modelView, view);
+
+    Mtx_Translate(&modelView, x, y, z, true);
+    Mtx_Scale(&modelView, sx, sy, sz);
+
+    C3D_FVUnifMtx4x4(
+        GPU_VERTEX_SHADER,
+        locModelView,
+        &modelView
+    );
+
+    C3D_FVUnifSet(
+        GPU_VERTEX_SHADER,
+        locColor,
+        ((color >> 24) & 0xFF) / 255.0f,
+        ((color >> 16) & 0xFF) / 255.0f,
+        ((color >> 8)  & 0xFF) / 255.0f,
+        (color & 0xFF) / 255.0f
+    );
+
+    C3D_DrawArrays(GPU_TRIANGLES, 0, 36);
 }
 
-static void triangle(
-    float ax, float ay, float az,
-    float bx, float by, float bz,
-    float cx, float cy, float cz)
-{
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
-    C3D_ImmSendAttrib(ax, ay, az, 1.0f);
-    C3D_ImmSendAttrib(bx, by, bz, 1.0f);
-    C3D_ImmSendAttrib(cx, cy, cz, 1.0f);
-    C3D_ImmDrawEnd();
+static void drawCar(const C3D_Mtx* view) {
+    C3D_Mtx carView;
+    Mtx_Copy(&carView, view);
+
+    Mtx_Translate(&carView, carX, 0.0f, carZ, true);
+    Mtx_RotateY(&carView, carAngle, true);
+
+    drawBox(&carView, 0.0f, 0.55f, 0.0f,
+            1.8f, 0.55f, 4.2f, 0xB01010FF);
+    drawBox(&carView, 0.0f, 1.05f, -0.2f,
+            1.35f, 0.55f, 2.0f, 0x901010FF);
+    drawBox(&carView, 0.0f, 0.75f, 1.45f,
+            1.55f, 0.25f, 1.25f, 0xB01010FF);
+    drawBox(&carView, 0.0f, 1.10f, 0.80f,
+            1.25f, 0.35f, 0.06f, 0x203050FF);
+    drawBox(&carView, 0.0f, 1.10f, -1.20f,
+            1.25f, 0.35f, 0.06f, 0x203050FF);
+    drawBox(&carView, -0.60f, 0.62f, 2.13f,
+            0.35f, 0.18f, 0.06f, 0xFFEE88FF);
+    drawBox(&carView, 0.60f, 0.62f, 2.13f,
+            0.35f, 0.18f, 0.06f, 0xFFEE88FF);
+    drawBox(&carView, -0.60f, 0.62f, -2.13f,
+            0.35f, 0.18f, 0.06f, 0xFF3030FF);
+    drawBox(&carView, 0.60f, 0.62f, -2.13f,
+            0.35f, 0.18f, 0.06f, 0xFF3030FF);
+    drawBox(&carView, -0.95f, 0.35f,  1.35f,
+            0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView,  0.95f, 0.35f,  1.35f,
+            0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView, -0.95f, 0.35f, -1.35f,
+            0.35f, 0.70f, 0.70f, 0x101010FF);
+    drawBox(&carView,  0.95f, 0.35f, -1.35f,
+            0.35f, 0.70f, 0.70f, 0x101010FF);
 }
 
-static void quad(
-    float x1, float y1, float z1,
-    float x2, float y2, float z2,
-    float x3, float y3, float z3,
-    float x4, float y4, float z4)
-{
-    triangle(x1,y1,z1, x2,y2,z2, x3,y3,z3);
-    triangle(x1,y1,z1, x3,y3,z3, x4,y4,z4);
+/* Palm trees are deliberately built from simple boxes for 3DS performance. */
+static void drawPalm(const C3D_Mtx* view, float x, float z, float scale) {
+    drawBox(view, x, 1.25f * scale, z,
+            0.18f * scale, 2.5f * scale, 0.18f * scale,
+            0x80502AFF);
+
+    drawBox(view, x - 0.72f * scale, 2.55f * scale, z,
+            1.55f * scale, 0.12f * scale, 0.24f * scale,
+            0x267A38FF);
+    drawBox(view, x + 0.72f * scale, 2.55f * scale, z,
+            1.55f * scale, 0.12f * scale, 0.24f * scale,
+            0x267A38FF);
+    drawBox(view, x, 2.55f * scale, z - 0.72f * scale,
+            0.24f * scale, 0.12f * scale, 1.55f * scale,
+            0x299344FF);
+    drawBox(view, x, 2.55f * scale, z + 0.72f * scale,
+            0.24f * scale, 0.12f * scale, 1.55f * scale,
+            0x299344FF);
+    drawBox(view, x - 0.42f * scale, 2.32f * scale, z - 0.42f * scale,
+            0.95f * scale, 0.10f * scale, 0.22f * scale,
+            0x207A30FF);
+    drawBox(view, x + 0.42f * scale, 2.32f * scale, z + 0.42f * scale,
+            0.95f * scale, 0.10f * scale, 0.22f * scale,
+            0x207A30FF);
 }
 
-static void drawRoad(void)
-{
-    setColor(0.16f, 0.18f, 0.21f);
-    quad(-5.0f,-1.5f,-2.0f, 5.0f,-1.5f,-2.0f,
-          5.0f,-1.5f,-45.0f, -5.0f,-1.5f,-45.0f);
-
-    setColor(0.05f, 0.36f, 0.16f);
-    quad(-35.0f,-1.65f,-2.0f, -5.0f,-1.65f,-2.0f,
-         -5.0f,-1.65f,-45.0f, -35.0f,-1.65f,-45.0f);
-    quad(5.0f,-1.65f,-2.0f, 35.0f,-1.65f,-2.0f,
-         35.0f,-1.65f,-45.0f, 5.0f,-1.65f,-45.0f);
-
-    setColor(0.95f, 0.95f, 0.88f);
-    quad(-4.0f,-1.48f,-2.0f, -3.85f,-1.48f,-2.0f,
-         -3.85f,-1.48f,-45.0f, -4.0f,-1.48f,-45.0f);
-    quad(3.85f,-1.48f,-2.0f, 4.0f,-1.48f,-2.0f,
-         4.0f,-1.48f,-45.0f, 3.85f,-1.48f,-45.0f);
-
-    setColor(1.0f, 0.85f, 0.15f);
-    for (int i = 0; i < 12; i++) {
-        float z = -3.0f - i * 3.5f + roadScroll;
-        if (z > -2.5f) z -= 42.0f;
-        float width = 0.06f + (-z) * 0.002f;
-        quad(-width,-1.46f,z, width,-1.46f,z,
-             width,-1.46f,z-1.4f, -width,-1.46f,z-1.4f);
-    }
+/* A large flat sun ahead of the road. */
+static void drawSun(const C3D_Mtx* view, float z) {
+    drawBox(view, 0.0f, 9.0f, z,
+            15.0f, 11.0f, 0.35f,
+            0xFFB52EFF);
 }
 
-static void drawCar(void)
-{
-    float x = carX;
-    float z = -6.0f;
-
-    setColor(0.92f, 0.12f, 0.06f);
-    quad(x-0.85f,-1.35f,z, x+0.85f,-1.35f,z,
-         x+0.85f,-0.95f,z, x-0.85f,-0.95f,z);
-
-    quad(x-0.85f,-1.12f,z, x+0.85f,-1.12f,z,
-         x+0.65f,-0.86f,z-0.8f, x-0.65f,-0.86f,z-0.8f);
-
-    setColor(0.95f, 0.18f, 0.08f);
-    quad(x-0.55f,-0.95f,z-0.65f, x+0.55f,-0.95f,z-0.65f,
-         x+0.38f,-0.58f,z-1.45f, x-0.38f,-0.58f,z-1.45f);
-
-    setColor(0.12f, 0.75f, 0.9f);
-    quad(x-0.36f,-0.72f,z-1.42f, x+0.36f,-0.72f,z-1.42f,
-         x+0.52f,-0.98f,z-0.72f, x-0.52f,-0.98f,z-0.72f);
-
-    setColor(0.025f, 0.025f, 0.03f);
-    for (int side = -1; side <= 1; side += 2) {
-        for (int rear = 0; rear <= 1; rear++) {
-            float wx = x + side * 0.78f;
-            float wz = z - (rear ? 1.35f : 0.25f);
-            quad(wx-0.15f,-1.45f,wz, wx+0.15f,-1.45f,wz,
-                 wx+0.15f,-1.05f,wz, wx-0.15f,-1.05f,wz);
+static int hitButton(float x, float y) {
+    for (int i = 0; i < 4; i++) {
+        if (x >= buttons[i].x &&
+            x <= buttons[i].x + buttons[i].w &&
+            y >= buttons[i].y &&
+            y <= buttons[i].y + buttons[i].h) {
+            return i;
         }
     }
+    return -1;
 }
 
-static void drawMenu(void)
-{
-    C2D_TargetClear(bottomTarget, C2D_Color32(10, 20, 38, 255));
+static void drawBottomUI(int activeButton) {
+    C2D_TargetClear(bottomTarget, C2D_Color32(20, 25, 40, 255));
     C2D_SceneBegin(bottomTarget);
 
-    C2D_DrawRectSolid(12, 15, 0, 296, 38,
-        C2D_Color32(0, 160, 220, 255));
-    C2D_DrawRectSolid(22, 75, 0, 276, 42,
-        C2D_Color32(220, 55, 30, 255));
-    C2D_DrawRectSolid(22, 130, 0, 276, 42,
-        C2D_Color32(30, 110, 65, 255));
-    C2D_DrawRectSolid(22, 185, 0, 276, 25,
-        C2D_Color32(230, 230, 230, 255));
+    for (int i = 0; i < 4; i++) {
+        Button* b = &buttons[i];
+        u32 c = b->color;
+        if (i == activeButton)
+            c = 0xFFFFFFFF;
 
-    // Make sure the queued 2D menu is submitted before ending the frame.
-    C2D_Flush();
+        C2D_DrawRectSolid(
+            b->x, b->y, 0.0f, b->w, b->h,
+            C2D_Color32((c >> 24) & 0xFF,
+                        (c >> 16) & 0xFF,
+                        (c >> 8) & 0xFF,
+                        c & 0xFF)
+        );
+        C2D_DrawRectSolid(
+            b->x + 3, b->y + 3, 0.1f,
+            b->w - 6, b->h - 6,
+            C2D_Color32(45, 50, 65, 255)
+        );
+    }
 }
 
-int main(void)
-{
+int main(void) {
     gfxInitDefault();
+    hidInit();
 
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
         gfxExit();
+        hidExit();
         return 1;
     }
 
-    C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
+    if (!C2D_Init(C2D_DEFAULT_MAX_OBJECTS)) {
+        C3D_Fini();
+        gfxExit();
+        hidExit();
+        return 1;
+    }
+
     C2D_Prepare();
 
-    topTarget = C3D_RenderTargetCreate(
-        240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+    topTarget = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     bottomTarget = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
-    if (!topTarget || !bottomTarget) {
-        if (topTarget) C3D_RenderTargetDelete(topTarget);
-        C2D_Fini();
-        C3D_Fini();
-        gfxExit();
-        return 1;
-    }
+    if (!topTarget || !bottomTarget)
+        goto cleanup;
 
-    C3D_RenderTargetSetOutput(
-        topTarget, GFX_TOP, GFX_LEFT, TRANSFER_FLAGS);
-
-    // Explicitly configure the bottom screen output as well.
-    C3D_RenderTargetSetOutput(
-        bottomTarget, GFX_BOTTOM, GFX_LEFT, TRANSFER_FLAGS);
-
-    shaderDvlb = DVLB_ParseFile((u32 *)vshader_shbin, vshader_shbin_size);
-    if (!shaderDvlb) {
-        C3D_RenderTargetDelete(topTarget);
-        C2D_Fini();
-        C3D_Fini();
-        gfxExit();
-        return 1;
-    }
+    shaderDvlb = DVLB_ParseFile((u32*)vshader_shbin, vshader_shbin_size);
+    if (!shaderDvlb)
+        goto cleanup;
 
     shaderProgramInit(&shaderProgram);
     shaderProgramSetVsh(&shaderProgram, &shaderDvlb->DVLE[0]);
     C3D_BindProgram(&shaderProgram);
 
-    uProjection = shaderInstanceGetUniformLocation(
-        shaderProgram.vertexShader, "projection");
-    uModelView = shaderInstanceGetUniformLocation(
-        shaderProgram.vertexShader, "modelView");
-    uColor = shaderInstanceGetUniformLocation(
-        shaderProgram.vertexShader, "uColor");
+    locProjection = shaderInstanceGetUniformLocation(shaderProgram.vertexShader, "projection");
+    locModelView = shaderInstanceGetUniformLocation(shaderProgram.vertexShader, "modelView");
+    locColor = shaderInstanceGetUniformLocation(shaderProgram.vertexShader, "uColor");
 
-    C3D_AttrInfo *attrInfo = C3D_GetAttrInfo();
+    vertexBuffer = linearAlloc(sizeof(cubeVerts));
+    if (!vertexBuffer)
+        goto cleanup;
+
+    memcpy(vertexBuffer, cubeVerts, sizeof(cubeVerts));
+
+    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    BufInfo_Add(bufInfo, vertexBuffer, sizeof(Vertex), 1, 0);
+
+    C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
     AttrInfo_Init(attrInfo);
     AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);
 
-    Mtx_PerspTilt(&projection, 55.0f * PI / 180.0f,
-        400.0f / 240.0f, 0.1f, 100.0f, false);
-    Mtx_Identity(&modelView);
-
-    C3D_TexEnv *env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
-    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+    float fov = 50.0f * (PI / 180.0f);
+    Mtx_PerspTilt(&projection, fov, 400.0f / 240.0f, 0.1f, 220.0f, false);
 
     C3D_CullFace(GPU_CULL_NONE);
     C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
+
+    int activeButton = -1;
 
     while (aptMainLoop()) {
         hidScanInput();
         u32 down = hidKeysDown();
         u32 held = hidKeysHeld();
 
-        if (down & KEY_START) break;
-        if (held & KEY_LEFT) carX -= 0.035f;
-        if (held & KEY_RIGHT) carX += 0.035f;
-        if (carX < -2.5f) carX = -2.5f;
-        if (carX >  2.5f) carX =  2.5f;
+        if (down & KEY_START)
+            break;
 
-        roadScroll += 0.10f;
-        if (roadScroll >= 3.5f) roadScroll -= 3.5f;
+        touchPosition touch;
+        hidTouchRead(&touch);
+        activeButton = -1;
+        if (held & KEY_TOUCH)
+            activeButton = hitButton(touch.px, touch.py);
+
+        bool gas = (activeButton == BTN_GAS) || (held & KEY_A);
+        bool brake = (activeButton == BTN_BRAKE) || (held & KEY_B);
+        bool left = (activeButton == BTN_LEFT) || (held & KEY_DLEFT);
+        bool right = (activeButton == BTN_RIGHT) || (held & KEY_DRIGHT);
+
+        if (gas)
+            carSpeed += CAR_ACCEL;
+        if (brake)
+            carSpeed -= CAR_ACCEL * 1.5f;
+        if (!gas && !brake)
+            carSpeed *= 0.985f;
+
+        if (carSpeed > CAR_MAX_SPEED)
+            carSpeed = CAR_MAX_SPEED;
+        if (carSpeed < -0.35f)
+            carSpeed = -0.35f;
+
+        if (fabsf(carSpeed) > 0.005f) {
+            if (left)
+                carAngle += 0.035f * (carSpeed > 0 ? 1.0f : -1.0f);
+            if (right)
+                carAngle -= 0.035f * (carSpeed > 0 ? 1.0f : -1.0f);
+        }
+
+        /* Keep the car near the same screen position; world moves relative to it. */
+        carX += sinf(carAngle) * carSpeed;
+        carZ += cosf(carAngle) * carSpeed;
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
-        C3D_RenderTargetClear(topTarget, C3D_CLEAR_ALL, 0x17334FFF, 0);
-        C3D_FrameDrawOn(topTarget);
-        C3D_BindProgram(&shaderProgram);
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uProjection, &projection);
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uModelView, &modelView);
+        /* Sunset sky: horizontal color bands, lightweight for the 3DS. */
+        C2D_TargetClear(topTarget, C2D_Color32(255, 105, 55, 255));
+        C2D_SceneBegin(topTarget);
+        C2D_DrawRectSolid(0, 0, 0.0f, 400, 55, C2D_Color32(115, 55, 125, 255));
+        C2D_DrawRectSolid(0, 55, 0.0f, 400, 45, C2D_Color32(190, 65, 100, 255));
+        C2D_DrawRectSolid(0, 100, 0.0f, 400, 45, C2D_Color32(245, 95, 65, 255));
+        C2D_DrawRectSolid(0, 145, 0.0f, 400, 45, C2D_Color32(255, 145, 55, 255));
 
-        drawRoad();
-        drawCar();
+        C3D_Mtx view;
+        Mtx_LookAt(
+            &view,
+            FVec3_New(carX - 6.0f * sinf(carAngle), 3.0f, carZ - 6.0f * cosf(carAngle)),
+            FVec3_New(carX, 0.8f, carZ),
+            FVec3_New(0.0f, 1.0f, 0.0f),
+            false
+        );
 
-        // Draw the bottom screen in the same frame, after the 3D scene.
-        drawMenu();
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, locProjection, &projection);
+
+        /* Road and shoulders */
+        drawBox(&view, 0.0f, -0.08f, carZ + 35.0f,
+                8.0f, 0.15f, 110.0f, 0x303038FF);
+        drawBox(&view, -4.1f, 0.0f, carZ + 35.0f,
+                0.18f, 0.12f, 110.0f, 0xE8E8E8FF);
+        drawBox(&view, 4.1f, 0.0f, carZ + 35.0f,
+                0.18f, 0.12f, 110.0f, 0xE8E8E8FF);
+
+        /* Dashed center line scrolling with the car's forward movement. */
+        float roadOffset = fmodf(carZ, 8.0f);
+        if (roadOffset < 0.0f)
+            roadOffset += 8.0f;
+        for (int i = 0; i < 16; i++) {
+            float markerZ = carZ + 8.0f + i * 8.0f - roadOffset;
+            drawBox(&view, 0.0f, 0.025f, markerZ,
+                    0.14f, 0.025f, 3.0f, 0xF0D060FF);
+        }
+
+        /* Repeating palm rows. Smaller trees are placed farther away. */
+        float palmOffset = fmodf(carZ, 16.0f);
+        if (palmOffset < 0.0f)
+            palmOffset += 16.0f;
+        for (int i = 0; i < 8; i++) {
+            float palmZ = carZ + 12.0f + i * 16.0f - palmOffset;
+            float scale = 1.0f - (float)i * 0.055f;
+            drawPalm(&view, -6.0f, palmZ, scale);
+            drawPalm(&view,  6.0f, palmZ, scale);
+        }
+
+        /* Large orange sun near the horizon. */
+        drawSun(&view, carZ + 95.0f);
+
+        drawCar(&view);
+        drawBottomUI(activeButton);
 
         C3D_FrameEnd(0);
     }
 
-    shaderProgramFree(&shaderProgram);
-    DVLB_Free(shaderDvlb);
-    C3D_RenderTargetDelete(topTarget);
-
+cleanup:
+    if (vertexBuffer)
+        linearFree(vertexBuffer);
+    if (shaderDvlb)
+        DVLB_Free(shaderDvlb);
     C2D_Fini();
     C3D_Fini();
     gfxExit();
+    hidExit();
     return 0;
 }
